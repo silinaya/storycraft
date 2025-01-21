@@ -1,101 +1,232 @@
-import Image from "next/image";
+'use client'
+
+import { useState } from 'react'
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { SceneData } from './components/scene-data'
+import { SlideshowModal } from './components/slideshow-modal'
+import { VideoPlayer } from "./components/video-player"
+import { generateScenes } from './actions/generate-scenes'
+import { regenerateImage } from './actions/regenerate-image'
+import { generateVideo } from './actions/generate-video'
+import { Loader2, FileSlidersIcon as Slideshow, Video } from 'lucide-react'
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [pitch, setPitch] = useState('')
+  const [numScenes, setNumScenes] = useState(8)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isVideoLoading, setIsVideoLoading] = useState(false)
+  const [scenes, setScenes] = useState<Array<{
+    imagePrompt: string;
+    description: string;
+    voiceover: string;
+    imageBase64?: string;
+  }>>([])
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [isSlideshowOpen, setIsSlideshowOpen] = useState(false)
+  const [videoUri, setVideoUri] = useState<string | null>(null)
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+  const handleGenerate = async () => {
+    if (pitch.trim() === '' || numScenes < 1) return
+    setIsLoading(true)
+    setErrorMessage(null)
+    try {
+      const generatedScenes = await generateScenes(pitch, numScenes)
+      setScenes(generatedScenes)
+      setPitch('')
+    } catch (error) {
+      console.error('Error generating scenes:', error)
+      setErrorMessage(error instanceof Error ? error.message : 'An unknown error occurred while generating scenes')
+      setScenes([]) // Clear any partially generated scenes
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleRegenerateImages = async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const regeneratedScenes = await Promise.all(scenes.map(async (scene, index) => {
+        try {
+          console.log(`Regenerating image for scene ${index + 1}`);
+          const { imageBase64 } = await regenerateImage(scene.imagePrompt);
+          console.log(`Successfully regenerated image for scene ${index + 1}`);
+          return { ...scene, imageBase64 };
+        } catch (error) {
+          console.error(`Error regenerating image for scene ${index + 1}:`, error);
+          setErrorMessage(prev => prev ? `${prev}\n` : '' + `Failed to generate image for scene ${index + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          return scene; // Keep the existing image if regeneration fails
+        }
+      }));
+      setScenes(regeneratedScenes);
+    } catch (error) {
+      console.error('Error regenerating images:', error);
+      setErrorMessage(prev => prev ? `${prev}\n` : '' + `Failed to regenerate images: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+    
+  const handleGenerateVideo = async () => {
+    setIsVideoLoading(true)
+    setErrorMessage(null)
+    try {
+      if (scenes[0].imageBase64) {
+          const result = await generateVideo(scenes)
+          if (result.success) {
+              setVideoUri(result.videoUrl)
+          } else {
+              setVideoUri("https://videos.pexels.com/video-files/3042473/3042473-sd_426_240_30fps.mp4")
+          }
+      } else {
+          setErrorMessage("No image for scene")
+      }
+    } catch (error) {
+      console.error("Error generating video:", error)
+      setErrorMessage(error instanceof Error ? error.message : "An unknown error occurred while generating video")
+    } finally {
+      setIsVideoLoading(false)
+    }
+  };
+
+  const handleUpdateScene = (index: number, updatedScene: typeof scenes[0]) => {
+    const newScenes = [...scenes];
+    newScenes[index] = updatedScene;
+    setScenes(newScenes);
+  };
+
+  return (
+    <main className="container mx-auto p-4 min-h-screen bg-background">
+      <h1 className="text-3xl font-bold text-center mb-8 text-primary">StoryCraft</h1>
+      {scenes.length === 0 ? (
+        <div className="max-w-xl mx-auto space-y-4">
+          <div className="space-y-2">
+            <h2 className="text-xl font-semibold">Enter your story pitch</h2>
+            <p className="text-muted-foreground">
+              Describe your story idea and we&apos;ll generate a complete storyboard with scenes, descriptions, and voiceover text.
+            </p>
+          </div>
+          <div className="space-y-4">
+            <Input
+              value={pitch}
+              onChange={(e) => setPitch(e.target.value)}
+              placeholder="Once upon a time..."
+              className="min-h-[100px]"
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            <div className="flex items-center space-x-2">
+              <label htmlFor="numScenes" className="text-sm font-medium">
+                Number of Scenes:
+              </label>
+              <Input
+                id="numScenes"
+                type="number"
+                min="1"
+                max="20"
+                value={numScenes}
+                onChange={(e) => setNumScenes(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                className="w-20"
+              />
+            </div>
+            <Button 
+              onClick={handleGenerate} 
+              disabled={isLoading || pitch.trim() === ''}
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                'Generate Storyboard'
+              )}
+            </Button>
+            {errorMessage && (
+              <div className="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded whitespace-pre-wrap">
+                {errorMessage}
+              </div>
+            )}
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+      ) : (
+        <div className="space-y-8">
+          {videoUri && (
+            <div className="mb-8">
+              <VideoPlayer src={videoUri} />
+            </div>
+          )}
+          <div className="flex justify-end space-x-4">
+            <Button
+              onClick={() => setIsSlideshowOpen(true)}
+              className="bg-secondary text-secondary-foreground hover:bg-secondary/90"
+              disabled={scenes.length === 0}
+            >
+              <Slideshow className="mr-2 h-4 w-4" />
+              Start Slideshow
+            </Button>
+            <Button 
+              onClick={handleRegenerateImages} 
+              disabled={isLoading}
+              className="bg-accent text-accent-foreground hover:bg-accent/90"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                'Generate Storyboard Images'
+              )}
+            </Button>
+            <Button
+              onClick={handleGenerateVideo}
+              disabled={isVideoLoading || scenes.length === 0}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {isVideoLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating Video...
+                </>
+              ) : (
+                <>
+                  <Video className="mr-2 h-4 w-4" />
+                  Generate Video
+                </>
+              )}
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {scenes.map((scene, index) => (
+              <SceneData
+                key={index}
+                sceneNumber={index + 1}
+                scene={scene}
+                onUpdate={(updatedScene) => handleUpdateScene(index, updatedScene)}
+              />
+            ))}
+          </div>
+          <div className="flex justify-center">
+            <Button onClick={() => setScenes([])} variant="outline" className="border-secondary text-secondary hover:bg-secondary/10">
+              Start Over
+            </Button>
+          </div>
+          {errorMessage && (
+            <div className="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded whitespace-pre-wrap">
+              {errorMessage}
+            </div>
+          )}
+        </div>
+      )}
+      {scenes.length > 0 && (
+        <SlideshowModal
+          scenes={scenes}
+          isOpen={isSlideshowOpen}
+          onClose={() => setIsSlideshowOpen(false)}
+        />
+      )}
+    </main>
+  )
 }
+

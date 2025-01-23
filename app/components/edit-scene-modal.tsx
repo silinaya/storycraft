@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import Image from 'next/image'
+import { VideoPlayer } from "./video-player"
 
 interface EditSceneModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface EditSceneModalProps {
     description: string;
     voiceover: string;
     imageBase64?: string;
+    videoUri?: string
   };
   sceneNumber: number;
   onUpdate: (updatedScene: EditSceneModalProps['scene']) => void;
@@ -36,6 +38,11 @@ export function EditSceneModal({ isOpen, onClose, scene, sceneNumber, onUpdate }
         <div className="grid gap-4 py-4">
           <div className="grid gap-4">
             <div className="relative w-full pb-[56.25%] overflow-hidden rounded-lg">
+              {editedScene.videoUri ? (
+                <div className="absolute inset-0">
+                  <VideoPlayer src={editedScene.videoUri} />
+                </div>
+              ) : editedScene.imageBase64 ? (
               <Image
                 src={scene.imageBase64 ? `data:image/png;base64,${scene.imageBase64}` : "/placeholder.svg"}
                 alt={`Scene ${sceneNumber}`}
@@ -45,6 +52,17 @@ export function EditSceneModal({ isOpen, onClose, scene, sceneNumber, onUpdate }
                   target.src = "/placeholder.svg";
                 }}
               />
+              ) : (
+                <Image
+                    src="/placeholder.svg"
+                    alt={`Scene ${sceneNumber}`}
+                    className="absolute inset-0 w-full h-full object-cover object-center"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.src = "/placeholder.svg";
+                    }}
+                  />
+              )}
             </div>
             <div className="grid gap-2">
               <label htmlFor="imagePrompt" className="text-sm font-medium">

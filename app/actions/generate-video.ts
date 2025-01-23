@@ -1,125 +1,22 @@
 'use server'
 
-import { GoogleAuth } from 'google-auth-library'
 import { Storage, GetSignedUrlConfig } from '@google-cloud/storage';
 import ffmpeg from 'fluent-ffmpeg';
+import { FfprobeData } from 'fluent-ffmpeg';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid'
-
-const LOCATION = 'us-central1'
-const PROJECT_ID = 'svc-demo-vertex'
-const MODEL = 'veo-001-preview-0815' // veo-2.0-generate-exp
-
-interface GenerateVideoResponse {
-  name: string;
-  done: boolean;
-  response: {
-    '@type': 'type.googleapis.com/cloud.ai.large_models.vision.GenerateVideoResponse';
-    generatedSamples: Array<{ // Use Array<{ ... }> to indicate an array of objects
-      video: {
-        uri: string;
-        encoding: string;
-      }
-    }>;
-  };
-}
+import { tts } from '@/lib/tts';
+import { generateSceneVideo, waitForOperation } from '@/lib/veo';
 
 
-async function getAccessToken(): Promise<string> {
-  const auth = new GoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-  });
-  const client = await auth.getClient();
-  const accessToken = (await client.getAccessToken()).token;
-  // Check if accessToken is null or undefined
-  if (accessToken) {
-    return accessToken; 
-  } else {
-    // Handle the case where accessToken is null or undefined
-    // This could involve throwing an error, retrying, or providing a default value
-    throw new Error('Failed to obtain access token.'); 
-  }
-}
-
-async function checkOperation(operationName: string): Promise<GenerateVideoResponse> {
-    const token = await getAccessToken();
-    
-    const response = await fetch(
-      `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}:fetchPredictOperation`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          operationName: operationName
-        }),
-      }
-    )
-    // Check if the response was successful
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const jsonResponse = await response.json(); // Parse as JSON
-    return jsonResponse as GenerateVideoResponse;
-}
-
-async function waitForOperation(operationName: string): Promise<GenerateVideoResponse> {
-  let generateVideoResponse = await checkOperation(operationName);
-  while (!generateVideoResponse.done) {
-    await delay(2000); // Wait for 5 second
-    generateVideoResponse = await checkOperation(operationName);
-  }
-  return generateVideoResponse;
-}
-
-async function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function generateSceneVideo(prompt: string, imageBase64: string): Promise<string> {
-    const token = await getAccessToken();
-    
-    const response = await fetch(
-      `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}:predictLongRunning`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          instances: [
-            {
-              prompt: prompt,
-              image: {
-                  bytesBase64Encoded: imageBase64,
-                  mimeType: "png",
-              }                 
-            },
-          ],
-          parameters: {
-            storageUri: "gs://svc-demo-vertex-us/",
-            sampleCount: 1,
-            aspectRatio: "16:9"
-          },
-        }),
-      }
-    )
-    // Check if the response was successful
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const jsonResult = await response.json(); // Parse as JSON
-    return jsonResult.name;
-}
-
-export async function concatenateVideos(gcsVideoUris: string[]): Promise<string> {
+async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles: string[]): Promise<string> {
   console.log(`Concatenate all videos`);
-  const outputFileName = `${uuidv4()}.mp4`;
+  const id = uuidv4();
+  const outputFileName = `${id}.mp4`;
+  const outputFileNameWithAudio = `${id}_with_audio.mp4`;
+  const outputFileNameWithVoiceover = `${id}_with_voiceover.mp4`;
   const storage = new Storage();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'video-concat-'));
   const concatenationList = path.join(tempDir, 'concat-list.txt');
@@ -166,11 +63,23 @@ export async function concatenateVideos(gcsVideoUris: string[]): Promise<string>
         .run();
     });
       
+    const publicDir = path.join(process.cwd(), 'public');
+    const audioFile = path.join(publicDir, 'RiseUp.mp3');
+    const outputPathWithAudio = path.join(tempDir, outputFileNameWithAudio);
+    const outputPathWithVoiceover = path.join(tempDir, outputFileNameWithVoiceover);
+
+    // Adding an audio file
+    console.log(`Adding music`);
+    await addAudioToVideoWithFadeOut(outputPath, audioFile, outputPathWithAudio)
+      
+    console.log(`Adding voiceover`);
+    await addVoiceover(outputPathWithAudio, speachAudioFiles, outputPathWithVoiceover)
+      
     // Upload result to GCS
     console.log(`Upload result to GCS`);
     const bucket = storage.bucket('svc-demo-vertex-us');
     await bucket
-      .upload(outputPath, {
+      .upload(outputPathWithVoiceover, {
         destination: outputFileName,
         metadata: {
           contentType: 'video/mp4',
@@ -192,6 +101,166 @@ export async function concatenateVideos(gcsVideoUris: string[]): Promise<string>
   }
 }
 
+async function addAudioToVideoWithFadeOut(
+  videoPath: string,
+  audioPath: string,
+  outputPath: string
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    // 1. Get Video Duration using ffprobe
+    ffmpeg.ffprobe(videoPath, (err, metadata) => {
+      if (err) {
+        console.error('Error getting video metadata:', err);
+        reject(err);
+        return;
+      }
+
+      const videoDuration = metadata.format.duration;
+      if (videoDuration === undefined) {
+        console.error('Error getting video duration');
+        reject(new Error('Could not determine video duration'));
+        return;
+      }
+      
+      // Fade out settings
+      const fadeOutDuration = 3; // seconds
+      const fadeOutStartTime = videoDuration - fadeOutDuration;
+
+      // Handle very short videos
+      // if (fadeOutStartTime < 0) {
+      //   console.warn('Video is shorter than the desired fade out duration');
+      //   fadeOutStartTime = 0;
+      //   fadeOutDuration = videoDuration;
+      // }
+
+      // 2. Add Audio to Video with Fade-Out
+      ffmpeg(videoPath)
+        .input(audioPath)
+        .complexFilter([
+          `[1:a]afade=t=out:st=${fadeOutStartTime}:d=${fadeOutDuration}[faded_audio]`
+        ])
+        .outputOptions([
+          '-map 0:v',
+          '-map [faded_audio]',
+          '-c:v copy',
+          '-c:a aac',
+          '-shortest'
+        ])
+        .output(outputPath)
+        .on('end', () => {
+          console.log('Successfully added audio to video with fade-out!');
+          resolve();
+        })
+        .on('error', (err) => {
+          console.error('Error adding audio to video:', err);
+          reject(err);
+        })
+        .run();
+    });
+  });
+}
+
+async function addVoiceover(
+  videoPath: string,
+  speechAudioFiles: string[],
+  outputPath: string
+): Promise<void> {
+  return new Promise<void>(async (resolve, reject) => {
+    try {
+      // 1. Get the duration of the video
+      const videoMetadata: FfprobeData = await new Promise((resolve, reject) => {
+        ffmpeg.ffprobe(videoPath, (err, metadata) => {
+          if (err) reject(err);
+          else resolve(metadata);
+        });
+      });
+      const videoDuration = videoMetadata.format.duration;
+
+      if (videoDuration === undefined) {
+        console.error("Error: Video duration is undefined!");
+        reject("Video duration is undefined");
+        return;
+      }
+
+      // 2. Prepare the command
+      let command = ffmpeg(videoPath);
+      const complexFilter: string[] = [];
+      let inputIndex = 1;
+      let lastAudioStream = "[0:a]";
+
+      // 3. Loop through the audio files and generate the filter
+      for (let i = 0; i < speechAudioFiles.length; i++) {
+        const startTime = i * 6;
+        if (startTime >= videoDuration) {
+          break;
+        }
+        const audioFile = speechAudioFiles[i];
+
+        // 3.1 Add the audio input
+        command = command.input(audioFile);
+
+        // 3.2 Get audio duration for potential padding or trimming
+        const audioMetadata: FfprobeData = await new Promise((resolve, reject) => {
+          ffmpeg.ffprobe(audioFile, (err, metadata) => {
+            if (err) reject(err);
+            else resolve(metadata);
+          });
+        });
+        const audioDuration = audioMetadata.format.duration;
+
+        if (audioDuration === undefined) {
+          console.error(`Error: Audio duration for ${audioFile} is undefined!`);
+          reject(`Audio duration for ${audioFile} is undefined!`);
+          return;
+        }
+
+        const endTime = Math.min(startTime + audioDuration, videoDuration, startTime + 6);
+
+        // 3.3 Build the complex filter string segment for this audio
+        complexFilter.push(
+          `${lastAudioStream}volume=enable='between(t,${startTime},${endTime})':volume=0.3[v${i}]`,
+          `[${inputIndex}:a]adelay=${startTime}s|${startTime}s,apad=whole_dur=6[a${i}]`,
+          `[v${i}][a${i}]amix=inputs=2:duration=first:dropout_transition=2[mix${i}]`
+        );
+
+        lastAudioStream = `[mix${i}]`;
+        inputIndex++;
+      }
+
+      // 4. Apply the complex filter and map the video stream
+      // command = command.complexFilter(
+      //   complexFilter, // Use only the audio filters
+      //   ['0:v', lastAudioStream] // Map the video and the last mixed audio stream
+      // );
+      command = command.complexFilter(complexFilter, lastAudioStream);
+
+      // 5. Set the output file and run the command
+      command
+        .outputOptions([
+            '-map 0:v',       // Map the video stream from the first input
+            '-c:v copy',      // Copy the video stream without re-encoding
+            '-y'             // Overwrite output file without asking
+          ])
+        .output(outputPath)
+        .on('start', (commandLine) => {
+          console.log('FFmpeg command:', commandLine);
+        })
+        .on('end', () => {
+          console.log('Voiceover added successfully!');
+          resolve();
+        })
+        .on('error', (err) => {
+          console.error('Error adding voiceover:', err);
+          reject(err);
+        })
+        .run();
+    } catch (err) {
+      console.error('Error in addVoiceover:', err);
+      reject(err);
+    }
+  });
+}
+
 export async function generateVideo(scenes: Array<{
     imagePrompt: string;
     description: string;
@@ -200,7 +269,6 @@ export async function generateVideo(scenes: Array<{
   }>): Promise<{ success: true, videoUrl: string } | { success: false, error: string }> {
     
   try {
-    
     console.log('Generating video...');
       
     const gcsVideoUris = await Promise.all(scenes.map(async (scene, index) => {
@@ -211,19 +279,32 @@ export async function generateVideo(scenes: Array<{
               console.log('operationName:', operationName);
               const generateVideoResponse = await waitForOperation(operationName);
               console.log(`Successfully generated video for scene ${index + 1}`);
+              console.log(generateVideoResponse);
               return generateVideoResponse.response.generatedSamples[0].video.uri;
+          }
+        } catch (error) {
+          console.error(`Error generating video for scene ${index + 1}:`, error);
+        }
+      }));
+    const filteredGcsVideoUris = gcsVideoUris.filter((s): s is string => s !== undefined);
+    const speachAudioFiles = await Promise.all(scenes.map(async (scene, index) => {
+        try {
+          if (scene.imageBase64) {
+              console.log(`Generating tts for scene ${index + 1}`);
+              const filename = await tts(scene.voiceover);
+              return filename;
           }
         } catch (error) {
           console.error(`Error generating image for scene ${index + 1}:`, error);
         }
       }));
-    const filteredGcsVideoUris = gcsVideoUris.filter((s): s is string => s !== undefined);
-    const url = await concatenateVideos(filteredGcsVideoUris);
+    const filteredSpeachAudioFiles = speachAudioFiles.filter((s): s is string => s !== undefined);
+    const url = await concatenateVideos(filteredGcsVideoUris, filteredSpeachAudioFiles);
     console.log('url:', url);
     console.log(`Generated video!`);
     return { success: true, videoUrl: url }
   } catch (error) {
-    console.error('Error in generateProductCustomizationAction:', error);
+    console.error('Error in generateVideo:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Failed to generate video' }
   }
 }

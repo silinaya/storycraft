@@ -11,6 +11,14 @@ import { regenerateImage } from './actions/regenerate-image'
 import { generateVideo } from './actions/generate-video'
 import { Loader2, FileSlidersIcon as Slideshow, Video } from 'lucide-react'
 
+interface Scene {
+  imagePrompt: string
+  description: string
+  voiceover: string
+  imageBase64?: string
+  videoUri?: string
+}
+
 export default function Home() {
   const [pitch, setPitch] = useState('')
   const [numScenes, setNumScenes] = useState(8)
@@ -21,6 +29,7 @@ export default function Home() {
     description: string;
     voiceover: string;
     imageBase64?: string;
+    videoUri?: string;
   }>>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isSlideshowOpen, setIsSlideshowOpen] = useState(false)
@@ -42,45 +51,66 @@ export default function Home() {
       setIsLoading(false)
     }
   }
-
-  const handleRegenerateImages = async () => {
-    setIsLoading(true);
-    setErrorMessage(null);
-    try {
-      const regeneratedScenes = await Promise.all(scenes.map(async (scene, index) => {
-        try {
-          console.log(`Regenerating image for scene ${index + 1}`);
-          const { imageBase64 } = await regenerateImage(scene.imagePrompt);
-          console.log(`Successfully regenerated image for scene ${index + 1}`);
-          return { ...scene, imageBase64 };
-        } catch (error) {
-          console.error(`Error regenerating image for scene ${index + 1}:`, error);
-          setErrorMessage(prev => prev ? `${prev}\n` : '' + `Failed to generate image for scene ${index + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          return scene; // Keep the existing image if regeneration fails
-        }
-      }));
-      setScenes(regeneratedScenes);
-    } catch (error) {
-      console.error('Error regenerating images:', error);
-      setErrorMessage(prev => prev ? `${prev}\n` : '' + `Failed to regenerate images: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
     
-  const handleGenerateVideo = async () => {
+  const handleRegenerateImages = async (index?: number) => {
+    setIsLoading(true)
+    setErrorMessage(null)
+    try {
+      if (index !== undefined) {
+        // Regenerate a single image
+        const scene = scenes[index]
+        const { imageBase64 } = await regenerateImage(scene.imagePrompt)
+        const updatedScenes = [...scenes]
+        updatedScenes[index] = { ...scene, imageBase64, videoUri: undefined }
+        setScenes(updatedScenes)
+      } else {
+        // Regenerate all images
+        const regeneratedScenes = await Promise.all(
+          scenes.map(async (scene) => {
+            try {
+              const { imageBase64 } = await regenerateImage(scene.imagePrompt)
+              return { ...scene, imageBase64, videoUri: undefined }
+            } catch (error) {
+              console.error(`Error regenerating image:`, error)
+              return scene // Keep the existing image if regeneration fails
+            }
+          }),
+        )
+        setScenes(regeneratedScenes)
+      }
+    } catch (error) {
+      console.error("Error regenerating images:", error)
+      setErrorMessage(`Failed to regenerate image(s): ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+    
+  const handleGenerateVideo = async (index?: number) => {
     setIsVideoLoading(true)
     setErrorMessage(null)
     try {
-      if (scenes[0].imageBase64) {
+      if (index !== undefined) {
+        // Generate video for a single scene
+        const scene = scenes[index]
+        const result = await generateVideo([scene])
+        let videoUri;
+        if (result.success) {
+            videoUri = result.videoUrl
+        } else {
+            videoUri = "https://videos.pexels.com/video-files/3042473/3042473-sd_426_240_30fps.mp4";
+        }
+        const updatedScenes = [...scenes]
+        updatedScenes[index] = { ...scene, videoUri }
+        setScenes(updatedScenes)
+      } else {
+          // Generate video for all scenes
           const result = await generateVideo(scenes)
           if (result.success) {
               setVideoUri(result.videoUrl)
           } else {
               setVideoUri("https://videos.pexels.com/video-files/3042473/3042473-sd_426_240_30fps.mp4")
           }
-      } else {
-          setErrorMessage("No image for scene")
       }
     } catch (error) {
       console.error("Error generating video:", error)
@@ -90,10 +120,10 @@ export default function Home() {
     }
   };
 
-  const handleUpdateScene = (index: number, updatedScene: typeof scenes[0]) => {
-    const newScenes = [...scenes];
-    newScenes[index] = updatedScene;
-    setScenes(newScenes);
+  const handleUpdateScene = (index: number, updatedScene: Scene) => {
+    const newScenes = [...scenes]
+    newScenes[index] = updatedScene
+    setScenes(newScenes)
   };
 
   return (
@@ -166,7 +196,7 @@ export default function Home() {
               Start Slideshow
             </Button>
             <Button 
-              onClick={handleRegenerateImages} 
+              onClick={() => handleRegenerateImages()} 
               disabled={isLoading}
               className="bg-accent text-accent-foreground hover:bg-accent/90"
             >
@@ -180,7 +210,7 @@ export default function Home() {
               )}
             </Button>
             <Button
-              onClick={handleGenerateVideo}
+              onClick={() => handleGenerateVideo()}
               disabled={isVideoLoading || scenes.length === 0}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
@@ -204,6 +234,8 @@ export default function Home() {
                 sceneNumber={index + 1}
                 scene={scene}
                 onUpdate={(updatedScene) => handleUpdateScene(index, updatedScene)}
+                onRegenerateImage={() => handleRegenerateImages(index)}
+                onGenerateVideo={() => handleGenerateVideo(index)}
               />
             ))}
           </div>

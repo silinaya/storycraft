@@ -1,7 +1,8 @@
 'use server'
 
-import { generateText, experimental_generateImage as generateImage } from 'ai'
+import { generateText/*, experimental_generateImage as generateImage*/ } from 'ai'
 import { createVertex } from '@ai-sdk/google-vertex'
+import { generateImageRest } from '@/lib/imagen';
 
 const vertex = createVertex({
   project: 'svc-demo-vertex',
@@ -22,9 +23,9 @@ export async function generateScenes(pitch: string, numScenes: number) {
       Create a storyboard with ${numScenes} scenes based on this story pitch: "${pitch}"
       
       For each scene, provide:
-      1. A detailed visual description for AI image generation (imagePrompt)
+      1. A detailed visual description for AI image generation (imagePrompt), the style should always be cinematic and photorealistic
       2. A scene description explaining what happens (description)
-      3. Narrator voiceover text (voiceover)
+      3. A short, narrator voiceover text, as short as possible (voiceover)
       
       Format the response as a JSON array with ${numScenes} objects containing these exact keys: imagePrompt, description, voiceover.
       Make the image prompts detailed and specific for best results with AI image generation.
@@ -69,14 +70,15 @@ export async function generateScenes(pitch: string, numScenes: number) {
     // Generate images for each scene
     const scenesWithImages = await Promise.all(scenes.map(async (scene) => {
       try {
-        const { images } = await generateImage({
-          model: vertex.image('imagen-3.0-generate-001'),
-          prompt: scene.imagePrompt,
-          n: 1,
-          aspectRatio: '16:9'
-        });
-        console.log('Generated image base64:', images[0].base64.substring(0, 50) + '...');
-        return { ...scene, imageBase64: images[0].base64 };
+        // const { images } = await generateImage({
+        //   model: vertex.image('imagen-3.0-generate-001'),
+        //   prompt: scene.imagePrompt,
+        //   n: 1,
+        //   aspectRatio: '16:9'
+        // });
+        const resultJson = await generateImageRest(scene.imagePrompt)
+        console.log('Generated image base64:', resultJson.predictions[0].bytesBase64Encoded.substring(0, 50) + '...');
+        return { ...scene, imageBase64: resultJson.predictions[0].bytesBase64Encoded };
       } catch (error) {
         console.error('Error generating image:', error);
         return { ...scene, imageBase64: '' };

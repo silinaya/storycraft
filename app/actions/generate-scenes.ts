@@ -15,6 +15,7 @@ interface Scene {
   voiceover: string;
   imageUrl?: string;
   imageBase64?: string;
+  videoUri?: string
 }
 
 export async function generateScenes(pitch: string, numScenes: number) {
@@ -31,6 +32,7 @@ export async function generateScenes(pitch: string, numScenes: number) {
       Make the image prompts detailed and specific for best results with AI image generation.
     `
 
+    console.log('Create a storyboard')
     const { text } = await generateText({
       model: vertex("gemini-1.5-flash-002"),
       prompt,
@@ -68,7 +70,7 @@ export async function generateScenes(pitch: string, numScenes: number) {
     }
 
     // Generate images for each scene
-    const scenesWithImages = await Promise.all(scenes.map(async (scene) => {
+    const scenesWithImages = await Promise.all(scenes.map(async (scene, index) => {
       try {
         // const { images } = await generateImage({
         //   model: vertex.image('imagen-3.0-generate-001'),
@@ -76,9 +78,14 @@ export async function generateScenes(pitch: string, numScenes: number) {
         //   n: 1,
         //   aspectRatio: '16:9'
         // });
-        const resultJson = await generateImageRest(scene.imagePrompt)
-        console.log('Generated image base64:', resultJson.predictions[0].bytesBase64Encoded.substring(0, 50) + '...');
-        return { ...scene, imageBase64: resultJson.predictions[0].bytesBase64Encoded };
+        console.log(`Generating image for scene ${index + 1}`);
+        const resultJson = await generateImageRest(scene.imagePrompt);
+        if (resultJson.predictions[0].raiFilteredReason) {
+            throw new Error(resultJson.predictions[0].raiFilteredReason)
+        } else {
+            console.log('Generated image base64:', resultJson.predictions[0].bytesBase64Encoded.substring(0, 50) + '...');
+            return { ...scene, imageBase64: resultJson.predictions[0].bytesBase64Encoded };
+        }
       } catch (error) {
         console.error('Error generating image:', error);
         return { ...scene, imageBase64: '' };

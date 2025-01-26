@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Pencil, RefreshCw, Video } from 'lucide-react'
+import { Pencil, RefreshCw, Video, Upload, Loader2 } from 'lucide-react'
 import { EditSceneModal } from './edit-scene-modal'
 import Image from 'next/image'
 import { VideoPlayer } from "./video-player"
@@ -14,24 +14,70 @@ interface SceneDataProps {
     description: string;
     voiceover: string;
     imageBase64?: string;
-    videoUri?: string
+    videoUri?: string | Promise<string>;
   };
   sceneNumber: number;
   onUpdate: (updatedScene: SceneDataProps['scene']) => void;
   onRegenerateImage: () => void;
   onGenerateVideo: () => void;
+  onUploadImage: (file: File) => void;
+  isGenerating: boolean;
 }
 
-export function SceneData({ scene, sceneNumber, onUpdate, onRegenerateImage, onGenerateVideo }: SceneDataProps) {
+export function SceneData({
+  scene,
+  sceneNumber,
+  onUpdate,
+  onRegenerateImage,
+  onGenerateVideo,
+  onUploadImage,
+  isGenerating,
+}: SceneDataProps) {
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  useEffect(() => {
+    const getVideoUrl = async () => {
+        if (typeof scene.videoUri === 'string') {
+          setVideoUrl(scene.videoUri);
+        } else if (scene.videoUri instanceof Promise) {
+          try {
+            const resolvedUrl = await scene.videoUri;
+            setVideoUrl(resolvedUrl);
+          } catch (error) {
+            console.error('Error resolving video URL:', error);
+            setVideoUrl(null); // or some default error URL
+          }
+        }
+    }
+
+    getVideoUrl();
+  }, [scene.videoUri]);
+  
+  const handleUploadClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      onUploadImage(file)
+    }
+  }
 
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-col">
         <div className="relative w-full aspect-video overflow-hidden group">
-          {scene.videoUri ? (
+          {isGenerating && (
+            <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10">
+              <Loader2 className="h-8 w-8 text-white animate-spin" />
+            </div>
+          )}
+          {videoUrl ? (
             <div className="absolute inset-0">
-              <VideoPlayer src={scene.videoUri} />
+              <VideoPlayer src={videoUrl} />
             </div>
           ) : scene.imageBase64 ? (
             <Image
@@ -60,12 +106,25 @@ export function SceneData({ scene, sceneNumber, onUpdate, onRegenerateImage, onG
               }}
             />
           )}
+          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button
+              variant="secondary"
+              size="icon"
+              className="bg-black/50 hover:bg-blue-500 hover:text-white"
+              onClick={onGenerateVideo}
+              disabled={isGenerating}
+            >
+              <Video className="h-4 w-4" />
+              <span className="sr-only">Generate video for scene</span>
+            </Button>
+          </div>
           <div className="absolute top-2 left-2 flex space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button
               variant="secondary"
               size="icon"
               className="bg-black/50 hover:bg-red-500 hover:text-white"
               onClick={onRegenerateImage}
+              disabled={isGenerating}
             >
               <RefreshCw className="h-4 w-4" />
               <span className="sr-only">Regenerate image</span>
@@ -73,12 +132,14 @@ export function SceneData({ scene, sceneNumber, onUpdate, onRegenerateImage, onG
             <Button
               variant="secondary"
               size="icon"
-              className="bg-black/50 hover:bg-blue-500 hover:text-white"
-              onClick={onGenerateVideo}
+              className="bg-black/50 hover:bg-green-500 hover:text-white"
+              onClick={handleUploadClick}
+              disabled={isGenerating}
             >
-              <Video className="h-4 w-4" />
-              <span className="sr-only">Generate video for scene</span>
+              <Upload className="h-4 w-4" />
+              <span className="sr-only">Upload image</span>
             </Button>
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
           </div>
         </div>
         <CardContent className="p-4">

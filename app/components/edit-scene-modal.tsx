@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
@@ -15,15 +15,38 @@ interface EditSceneModalProps {
     description: string;
     voiceover: string;
     imageBase64?: string;
-    videoUri?: string
+    videoUri?: string | Promise<string>;
   };
   sceneNumber: number;
   onUpdate: (updatedScene: EditSceneModalProps['scene']) => void;
 }
 
 export function EditSceneModal({ isOpen, onClose, scene, sceneNumber, onUpdate }: EditSceneModalProps) {
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [editedScene, setEditedScene] = useState(scene)
+  
+  useEffect(() => {
+    setEditedScene(scene)
+  }, [scene])
+    
+  useEffect(() => {
+    const getVideoUrl = async () => {
+        if (typeof scene.videoUri === 'string') {
+          setVideoUrl(scene.videoUri);
+        } else if (scene.videoUri instanceof Promise) {
+          try {
+            const resolvedUrl = await scene.videoUri;
+            setVideoUrl(resolvedUrl);
+          } catch (error) {
+            console.error('Error resolving video URL:', error);
+            setVideoUrl(null); // or some default error URL
+          }
+        }
+    }
 
+    getVideoUrl();
+  }, [scene.videoUri]);
+  
   const handleSave = () => {
     onUpdate(editedScene)
     onClose()
@@ -38,9 +61,9 @@ export function EditSceneModal({ isOpen, onClose, scene, sceneNumber, onUpdate }
         <div className="grid gap-4 py-4">
           <div className="grid gap-4">
             <div className="relative w-full pb-[56.25%] overflow-hidden rounded-lg">
-              {editedScene.videoUri ? (
+              {videoUrl ? (
                 <div className="absolute inset-0">
-                  <VideoPlayer src={editedScene.videoUri} />
+                  <VideoPlayer src={videoUrl} />
                 </div>
               ) : editedScene.imageBase64 ? (
               <Image

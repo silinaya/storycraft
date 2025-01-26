@@ -26,39 +26,59 @@ interface GenerateImageResponse {
       bytesBase64Encoded: string;
       mimeType: string;
       gcsUri: string;
+      raiFilteredReason?: string;
   }>;
 }
 
 export async function generateImageRest(prompt: string): Promise<GenerateImageResponse> {
     const token = await getAccessToken();
-    
-    const response = await fetch(
-      `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}:predict`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          instances: [
-           {
-             prompt: prompt
-           },
-          ],
-          parameters: {
-            // storageUri: "gs://svc-demo-vertex-us/",
-            safetySetting: 'block_only_high',
-            sampleCount: 1,
-            aspectRatio: "16:9",
-          },
-        }),
-      }
-    )
-    // Check if the response was successful
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    const maxRetries = 5; // Maximum number of retries
+    const initialDelay = 1000; // Initial delay in milliseconds (1 second)
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(
+          `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}:predict`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json; charset=utf-8',
+            },
+            body: JSON.stringify({
+              instances: [
+               {
+                 prompt: prompt
+               },
+              ],
+              parameters: {
+                // storageUri: "gs://svc-demo-vertex-us/",
+                safetySetting: 'block_only_high',
+                sampleCount: 1,
+                aspectRatio: "16:9",
+                includeRaiReason: true,
+              },
+            }),
+          }
+        )
+        // Check if the response was successful
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const jsonResult = await response.json(); // Parse as JSON
+        return jsonResult;
+      } catch (error) {
+            if (attempt < maxRetries) {
+                const baseDelay = initialDelay * Math.pow(2, attempt); // Exponential backoff
+                const jitter = Math.random() * 2000; // Random value between 0 and baseDelay
+                const delay = baseDelay + jitter;
+                console.warn(`Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`, error);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                console.error(`Failed after ${maxRetries} attempts.`, error);
+                throw error; // Re-throw the error after maximum retries
+            }
+        }
     }
-    const jsonResult = await response.json(); // Parse as JSON
-    return jsonResult;
+    throw new Error("Function should have returned or thrown an error before this line.");
 }

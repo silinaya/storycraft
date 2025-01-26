@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SceneData } from './components/scene-data'
@@ -8,15 +8,15 @@ import { SlideshowModal } from './components/slideshow-modal'
 import { VideoPlayer } from "./components/video-player"
 import { generateScenes } from './actions/generate-scenes'
 import { regenerateImage } from './actions/regenerate-image'
-import { generateVideo } from './actions/generate-video'
+import { editVideo } from './actions/generate-video'
 import { Loader2, FileSlidersIcon as Slideshow, Video } from 'lucide-react'
 
 interface Scene {
-  imagePrompt: string
-  description: string
-  voiceover: string
-  imageBase64?: string
-  videoUri?: string
+  imagePrompt: string;
+  description: string;
+  voiceover: string;
+  imageBase64?: string;
+  videoUri?: string | Promise<string>;
 }
 
 export default function Home() {
@@ -24,16 +24,17 @@ export default function Home() {
   const [numScenes, setNumScenes] = useState(8)
   const [isLoading, setIsLoading] = useState(false)
   const [isVideoLoading, setIsVideoLoading] = useState(false)
-  const [scenes, setScenes] = useState<Array<{
-    imagePrompt: string;
-    description: string;
-    voiceover: string;
-    imageBase64?: string;
-    videoUri?: string;
-  }>>([])
+  const [scenes, setScenes] = useState<Array<Scene>>([])
+  const [generatingScenes, setGeneratingScenes] = useState<Set<number>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isSlideshowOpen, setIsSlideshowOpen] = useState(false)
   const [videoUri, setVideoUri] = useState<string | null>(null)
+  
+  const FALLBACK_URL = "https://videos.pexels.com/video-files/3042473/3042473-sd_426_240_30fps.mp4"
+  
+  useEffect(() => {
+      console.log("generatingScenes (in useEffect):", generatingScenes);
+    }, [generatingScenes]); // Log only when generatingScenes changes
 
   const handleGenerate = async () => {
     if (pitch.trim() === '' || numScenes < 1) return
@@ -51,19 +52,11 @@ export default function Home() {
       setIsLoading(false)
     }
   }
-    
-  const handleRegenerateImages = async (index?: number) => {
+  
+  const handleRegenerateAllImages = async () => {
     setIsLoading(true)
     setErrorMessage(null)
     try {
-      if (index !== undefined) {
-        // Regenerate a single image
-        const scene = scenes[index]
-        const { imageBase64 } = await regenerateImage(scene.imagePrompt)
-        const updatedScenes = [...scenes]
-        updatedScenes[index] = { ...scene, imageBase64, videoUri: undefined }
-        setScenes(updatedScenes)
-      } else {
         // Regenerate all images
         const regeneratedScenes = await Promise.all(
           scenes.map(async (scene) => {
@@ -77,7 +70,6 @@ export default function Home() {
           }),
         )
         setScenes(regeneratedScenes)
-      }
     } catch (error) {
       console.error("Error regenerating images:", error)
       setErrorMessage(`Failed to regenerate image(s): ${error instanceof Error ? error.message : "Unknown error"}`)
@@ -86,37 +78,127 @@ export default function Home() {
     }
   }
     
-  const handleGenerateVideo = async (index?: number) => {
+  const handleRegenerateImage = async (index: number) => {
+    setIsLoading(true)
+    setErrorMessage(null)
+    try {
+        // Regenerate a single image
+        const scene = scenes[index]
+        const { imageBase64 } = await regenerateImage(scene.imagePrompt)
+        const updatedScenes = [...scenes]
+        updatedScenes[index] = { ...scene, imageBase64, videoUri: undefined }
+        console.log(updatedScenes)
+        setScenes(updatedScenes)
+    } catch (error) {
+      console.error("Error regenerating images:", error)
+      setErrorMessage(`Failed to regenerate image(s): ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+  
+  const handleEditVideo = async () => {
     setIsVideoLoading(true)
     setErrorMessage(null)
     try {
-      if (index !== undefined) {
-        // Generate video for a single scene
-        const scene = scenes[index]
-        const result = await generateVideo([scene])
-        let videoUri;
-        if (result.success) {
-            videoUri = result.videoUrl
+        if (scenes.every((scene) => typeof scene.videoUri === 'string')) {
+            const result = await editVideo(
+              await Promise.all(
+                scenes.map(async (scene) => {
+                  return {
+                    voiceover: scene.voiceover,
+                    videoUri: scene.videoUri,
+                  };
+                })
+              )
+            );
+            if (result.success) {
+                setVideoUri(result.videoUrl)
+            } else {
+                setVideoUri(FALLBACK_URL)
+            }
         } else {
-            videoUri = "https://videos.pexels.com/video-files/3042473/3042473-sd_426_240_30fps.mp4";
+            setErrorMessage("All scenes should have a generated video")
+            setVideoUri(FALLBACK_URL)
         }
-        const updatedScenes = [...scenes]
-        updatedScenes[index] = { ...scene, videoUri }
-        setScenes(updatedScenes)
-      } else {
-          // Generate video for all scenes
-          const result = await generateVideo(scenes)
-          if (result.success) {
-              setVideoUri(result.videoUrl)
-          } else {
-              setVideoUri("https://videos.pexels.com/video-files/3042473/3042473-sd_426_240_30fps.mp4")
-          }
-      }
     } catch (error) {
       console.error("Error generating video:", error)
       setErrorMessage(error instanceof Error ? error.message : "An unknown error occurred while generating video")
     } finally {
       setIsVideoLoading(false)
+    }
+  }
+  
+    const handleGenerateAllVideos = async () => {
+      setErrorMessage(null);
+      console.log("[Client] Generating videos for all scenes - START");
+      setGeneratingScenes(new Set(scenes.map((_, i) => i)));
+
+      const regeneratedScenes = await Promise.all(
+        scenes.map(async (scene) => {
+          try {
+            const response = await fetch('/api/videos', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify([scene]),
+            });
+
+            const { success, videoUrls, error } = await response.json();
+
+            if (success) {
+              return { ...scene, videoUri: videoUrls[0] || FALLBACK_URL };
+            } else {
+              throw new Error(error);
+            }
+          } catch (error) {
+            console.error("Error regenerating video:", error);
+            return { ...scene, videoUri: FALLBACK_URL }; // Use fallback on error
+          }
+        })
+      );
+
+      setScenes(regeneratedScenes);
+      setGeneratingScenes(new Set());
+    };
+    
+  const handleGenerateVideo = async (index: number) => {
+    setErrorMessage(null);
+    try {
+      // Single scene generation logic remains the same
+      setGeneratingScenes(prev => new Set([...prev, index]));
+      const scene = scenes[index];
+      
+      const response = await fetch('/api/videos', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify([scene]),
+            });
+
+      const { success, videoUrls } = await response.json();
+      const videoUri = success ? videoUrls[0] : FALLBACK_URL;
+      setScenes(prevScenes =>
+        prevScenes.map((s, i) => (i === index ? { ...s, videoUri } : s))
+      );
+    } catch (error) {
+      console.error("[Client] Error generating video:", error);
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "An unknown error occurred while generating video"
+      );
+
+      const videoUri = FALLBACK_URL;
+      setScenes(prevScenes =>
+        prevScenes.map((s, i) => (i === index ? { ...s, videoUri } : s))
+      );
+    } finally {
+      console.log(`[Client] Generating video done`);
+      
+      setGeneratingScenes(prev => {
+        const updated = new Set(prev);
+        updated.delete(index); // Remove index from generatingScenes
+        return updated;
+      });
     }
   };
 
@@ -125,6 +207,29 @@ export default function Home() {
     newScenes[index] = updatedScene
     setScenes(newScenes)
   };
+    
+  const handleUploadImage = async (index: number, file: File) => {
+    setErrorMessage(null)
+    try {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const base64String = reader.result as string
+        const imageBase64 = base64String.split(",")[1] // Remove the data URL prefix
+        const updatedScenes = [...scenes]
+        updatedScenes[index] = { ...updatedScenes[index], imageBase64, videoUri: undefined }
+        setScenes(updatedScenes)
+      }
+      reader.onerror = () => {
+        throw new Error("Failed to read the image file")
+      }
+      reader.readAsDataURL(file)
+    } catch (error) {
+      console.error("Error uploading image:", error)
+      setErrorMessage(error instanceof Error ? error.message : "An unknown error occurred while uploading the image")
+    }
+  }
+  
+  console.log("Component rendered");
 
   return (
     <main className="container mx-auto p-4 min-h-screen bg-background">
@@ -196,7 +301,7 @@ export default function Home() {
               Start Slideshow
             </Button>
             <Button 
-              onClick={() => handleRegenerateImages()} 
+              onClick={() => handleRegenerateAllImages()} 
               disabled={isLoading}
               className="bg-accent text-accent-foreground hover:bg-accent/90"
             >
@@ -210,19 +315,36 @@ export default function Home() {
               )}
             </Button>
             <Button
-              onClick={() => handleGenerateVideo()}
+              onClick={() => handleGenerateAllVideos()}
               disabled={isVideoLoading || scenes.length === 0}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {isVideoLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating Video...
+                  Generating Videos...
                 </>
               ) : (
                 <>
                   <Video className="mr-2 h-4 w-4" />
-                  Generate Video
+                  Generate Videos
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={() => handleEditVideo()}
+              disabled={isVideoLoading || scenes.length === 0 || !scenes.every((scene) => typeof scene.videoUri === 'string')}
+              className="bg-purple-500 text-primary-foreground hover:bg-primary/90"
+            >
+              {isVideoLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Editing Final Video...
+                </>
+              ) : (
+                <>
+                  <Video className="mr-2 h-4 w-4" />
+                  Edit Final Video
                 </>
               )}
             </Button>
@@ -234,8 +356,10 @@ export default function Home() {
                 sceneNumber={index + 1}
                 scene={scene}
                 onUpdate={(updatedScene) => handleUpdateScene(index, updatedScene)}
-                onRegenerateImage={() => handleRegenerateImages(index)}
+                onRegenerateImage={() => handleRegenerateImage(index)}
                 onGenerateVideo={() => handleGenerateVideo(index)}
+                onUploadImage={(file) => handleUploadImage(index, file)}
+                isGenerating={generatingScenes.has(index)}
               />
             ))}
           </div>

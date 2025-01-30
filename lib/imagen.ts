@@ -3,7 +3,7 @@ import { GoogleAuth } from 'google-auth-library'
 
 const LOCATION = 'us-central1'
 const PROJECT_ID = 'svc-demo-vertex'
-const MODEL = 'imagen-3.0-generate-001'
+const MODEL = 'imagen-3.0-generate-002'
 
 async function getAccessToken(): Promise<string> {
   const auth = new GoogleAuth({

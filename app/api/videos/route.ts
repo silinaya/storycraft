@@ -12,6 +12,7 @@ import { Storage, GetSignedUrlConfig } from '@google-cloud/storage';
 export async function POST(req: Request): Promise<Response> {
   const scenes: Array<{
       imagePrompt: string;
+      videoPrompt: string;
       description: string;
       voiceover: string;
       imageBase64?: string;
@@ -26,7 +27,7 @@ export async function POST(req: Request): Promise<Response> {
       .map(async (scene, index) => {
         console.log(`Starting video generation for scene ${index + 1}`);
         
-        const operationName = await generateSceneVideo(scene.imagePrompt, scene.imageBase64!);
+        const operationName = await generateSceneVideo(scene.videoPrompt, scene.imageBase64!);
         console.log(`Operation started for scene ${index + 1}`);
         
         const generateVideoResponse = await waitForOperation(operationName);

@@ -12,6 +12,7 @@ interface EditSceneModalProps {
   onClose: () => void;
   scene: {
     imagePrompt: string;
+    videoPrompt: string;
     description: string;
     voiceover: string;
     imageBase64?: string;
@@ -99,6 +100,18 @@ export function EditSceneModal({ isOpen, onClose, scene, sceneNumber, onUpdate }
                 rows={4}
               />
             </div>
+          </div>
+          <div className="grid gap-2">
+            <label htmlFor="videoPrompt" className="text-sm font-medium">
+              Video Prompt
+            </label>
+            <Textarea
+              id="description"
+              value={editedScene.videoPrompt}
+              onChange={(e) => setEditedScene({ ...editedScene, videoPrompt: e.target.value })}
+              placeholder="Describe the video..."
+              rows={3}
+            />
           </div>
           <div className="grid gap-2">
             <label htmlFor="description" className="text-sm font-medium">

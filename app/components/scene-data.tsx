@@ -11,6 +11,7 @@ import { VideoPlayer } from "./video-player"
 interface SceneDataProps {
   scene: {
     imagePrompt: string;
+    videoPrompt: string;
     description: string;
     voiceover: string;
     imageBase64?: string;

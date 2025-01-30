@@ -13,7 +13,7 @@ export async function regenerateImage(prompt: string) {
     console.log('Regenerating image with prompt:', prompt);
 
     const { images } = await generateImage({
-      model: vertex.image('imagen-3.0-generate-001'),
+      model: vertex.image('imagen-3.0-generate-002'),
       prompt: prompt,
       n: 1,
       aspectRatio: '16:9'

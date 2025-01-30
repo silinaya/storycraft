@@ -9,10 +9,12 @@ import { VideoPlayer } from "./components/video-player"
 import { generateScenes } from './actions/generate-scenes'
 import { regenerateImage } from './actions/regenerate-image'
 import { editVideo } from './actions/generate-video'
+import { resizeImage } from './actions/resize-image'
 import { Loader2, FileSlidersIcon as Slideshow, Video } from 'lucide-react'
 
 interface Scene {
   imagePrompt: string;
+  videoPrompt: string;
   description: string;
   voiceover: string;
   imageBase64?: string;
@@ -79,7 +81,7 @@ export default function Home() {
   }
     
   const handleRegenerateImage = async (index: number) => {
-    setIsLoading(true)
+    setGeneratingScenes(prev => new Set([...prev, index]));
     setErrorMessage(null)
     try {
         // Regenerate a single image
@@ -93,7 +95,11 @@ export default function Home() {
       console.error("Error regenerating images:", error)
       setErrorMessage(`Failed to regenerate image(s): ${error instanceof Error ? error.message : "Unknown error"}`)
     } finally {
-      setIsLoading(false)
+      setGeneratingScenes(prev => {
+        const updated = new Set(prev);
+        updated.delete(index); // Remove index from generatingScenes
+        return updated;
+      });
     }
   }
   
@@ -212,11 +218,12 @@ export default function Home() {
     setErrorMessage(null)
     try {
       const reader = new FileReader()
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const base64String = reader.result as string
         const imageBase64 = base64String.split(",")[1] // Remove the data URL prefix
+        const resizedImageBase64 = await resizeImage(imageBase64);
         const updatedScenes = [...scenes]
-        updatedScenes[index] = { ...updatedScenes[index], imageBase64, videoUri: undefined }
+        updatedScenes[index] = { ...updatedScenes[index], imageBase64: resizedImageBase64, videoUri: undefined }
         setScenes(updatedScenes)
       }
       reader.onerror = () => {
@@ -232,7 +239,7 @@ export default function Home() {
   console.log("Component rendered");
 
   return (
-    <main className="container mx-auto p-4 min-h-screen bg-background">
+    <main className="container mx-auto p-8 min-h-screen bg-background">
       <h1 className="text-3xl font-bold text-center mb-8 text-primary">StoryCraft</h1>
       {scenes.length === 0 ? (
         <div className="max-w-xl mx-auto space-y-4">
@@ -278,7 +285,7 @@ export default function Home() {
               )}
             </Button>
             {errorMessage && (
-              <div className="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded whitespace-pre-wrap">
+              <div className="mt-4 p-8 bg-red-100 border border-red-400 text-red-700 rounded whitespace-pre-wrap">
                 {errorMessage}
               </div>
             )}
@@ -302,7 +309,7 @@ export default function Home() {
             </Button>
             <Button 
               onClick={() => handleRegenerateAllImages()} 
-              disabled={isLoading}
+              disabled={isLoading || generatingScenes.size > 0}
               className="bg-accent text-accent-foreground hover:bg-accent/90"
             >
               {isLoading ? (
@@ -316,7 +323,7 @@ export default function Home() {
             </Button>
             <Button
               onClick={() => handleGenerateAllVideos()}
-              disabled={isVideoLoading || scenes.length === 0}
+              disabled={isVideoLoading || scenes.length === 0  || generatingScenes.size > 0}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {isVideoLoading ? (
@@ -333,7 +340,7 @@ export default function Home() {
             </Button>
             <Button
               onClick={() => handleEditVideo()}
-              disabled={isVideoLoading || scenes.length === 0 || !scenes.every((scene) => typeof scene.videoUri === 'string')}
+              disabled={isVideoLoading || scenes.length === 0 || !scenes.every((scene) => typeof scene.videoUri === 'string')  || generatingScenes.size > 0} 
               className="bg-purple-500 text-primary-foreground hover:bg-primary/90"
             >
               {isVideoLoading ? (
@@ -373,6 +380,9 @@ export default function Home() {
               {errorMessage}
             </div>
           )}
+          <div className="mt-auto pt-4 text-center text-xs text-gray-500">
+              made with ❤️ by @mblanc
+          </div>
         </div>
       )}
       {scenes.length > 0 && (

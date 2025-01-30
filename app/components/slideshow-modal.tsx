@@ -9,6 +9,7 @@ import Image from 'next/image'
 
 interface Scene {
   imagePrompt: string;
+  videoPrompt: string;
   description: string;
   voiceover: string;
   imageBase64?: string;

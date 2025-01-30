@@ -13,7 +13,7 @@ export async function tts(text: string): Promise<string | undefined> {
     input: { text },
     voice: { 
       languageCode: 'en-US', 
-      name: 'en-US-Journey-F',
+      name: 'en-US-Journey-D',
     },
     audioConfig: { 
       audioEncoding: protos.google.cloud.texttospeech.v1.AudioEncoding.MP3

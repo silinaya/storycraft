@@ -87,7 +87,7 @@ async function delay(ms: number): Promise<void> {
 
 export async function generateSceneVideo(prompt: string, imageBase64: string): Promise<string> {
   const token = await getAccessToken();
-  const maxRetries = 5; // Maximum number of retries
+  const maxRetries = 10; // Maximum number of retries
   const initialDelay = 1000; // Initial delay in milliseconds (1 second)
 
   const makeRequest = async (attempt: number) => {
@@ -131,7 +131,10 @@ export async function generateSceneVideo(prompt: string, imageBase64: string): P
         const baseDelay = initialDelay * Math.pow(2, attempt); // Exponential backoff
         const jitter = Math.random() * 2000; // Random value between 0 and baseDelay
         const delay = baseDelay + jitter;
-        console.warn(`Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`, error);
+        console.warn(
+            `Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`, 
+            error instanceof Error ? error.message : error
+        );
         await new Promise(resolve => setTimeout(resolve, delay));
         return makeRequest(attempt + 1); // Recursive call for retry
       } else {

@@ -37,10 +37,12 @@ export function signedUrlToGcsUri(signedUrl: string): string {
 
 export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles: string[]): Promise<string> {
   console.log(`Concatenate all videos`);
+  const withVoiceOver = true;
   const id = uuidv4();
   const outputFileName = `${id}.mp4`;
   const outputFileNameWithAudio = `${id}_with_audio.mp4`;
   const outputFileNameWithVoiceover = `${id}_with_voiceover.mp4`;
+  let finalOutputPath;
   const storage = new Storage();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'video-concat-'));
   const concatenationList = path.join(tempDir, 'concat-list.txt');
@@ -87,24 +89,30 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
         .on('error', (err) => reject(err))
         .run();
     });
+    finalOutputPath = outputPath;
       
     const publicDir = path.join(process.cwd(), 'public');
-    const audioFile = path.join(publicDir, 'RiseUp.mp3');
+    const audioFile = path.join(publicDir, 'Good Starts - Jingle Punks.mp3');
     const outputPathWithAudio = path.join(tempDir, outputFileNameWithAudio);
     const outputPathWithVoiceover = path.join(tempDir, outputFileNameWithVoiceover);
 
     // Adding an audio file
     console.log(`Adding music`);
     await addAudioToVideoWithFadeOut(outputPath, audioFile, outputPathWithAudio)
+    finalOutputPath = outputPathWithAudio;
       
     console.log(`Adding voiceover`);
-    await addVoiceover(outputPathWithAudio, speachAudioFiles, outputPathWithVoiceover)
+    console.log(speachAudioFiles.length);
+    if (withVoiceOver) {
+        await addVoiceover(outputPathWithAudio, speachAudioFiles, outputPathWithVoiceover)
+        finalOutputPath = outputPathWithVoiceover;
+    }
       
     // Upload result to GCS
     console.log(`Upload result to GCS`);
     const bucket = storage.bucket('svc-demo-vertex-us');
     await bucket
-      .upload(outputPathWithVoiceover, {
+      .upload(finalOutputPath, {
         destination: outputFileName,
         metadata: {
           contentType: 'video/mp4',
@@ -208,77 +216,139 @@ async function addVoiceover(
       }
 
       // 2. Prepare the command
-      let command = ffmpeg(videoPath);
-      const complexFilter: string[] = [];
-      let inputIndex = 1;
-      let lastAudioStream = "[0:a]";
+//       let command = ffmpeg(videoPath);
+//       const complexFilter: string[] = [];
+//       let inputIndex = 1;
+//       let lastAudioStream = "[0:a]";
 
-      // 3. Loop through the audio files and generate the filter
-      for (let i = 0; i < speechAudioFiles.length; i++) {
-        const startTime = i * 6;
-        if (startTime >= videoDuration) {
-          break;
-        }
-        const audioFile = speechAudioFiles[i];
+//       // 3. Loop through the audio files and generate the filter
+//       for (let i = 0; i < speechAudioFiles.length; i++) {
+//         const startTime = i * 6;
+//         if (startTime >= videoDuration) {
+//           break;
+//         }
+//         const audioFile = speechAudioFiles[i];
 
-        // 3.1 Add the audio input
-        command = command.input(audioFile);
+//         // 3.1 Add the audio input
+//         command = command.input(audioFile);
 
-        // 3.2 Get audio duration for potential padding or trimming
-        const audioMetadata: FfprobeData = await new Promise((resolve, reject) => {
-          ffmpeg.ffprobe(audioFile, (err, metadata) => {
-            if (err) reject(err);
-            else resolve(metadata);
-          });
+//         // 3.2 Get audio duration for potential padding or trimming
+//         const audioMetadata: FfprobeData = await new Promise((resolve, reject) => {
+//           ffmpeg.ffprobe(audioFile, (err, metadata) => {
+//             if (err) reject(err);
+//             else resolve(metadata);
+//           });
+//         });
+//         const audioDuration = audioMetadata.format.duration;
+
+//         if (audioDuration === undefined) {
+//           console.error(`Error: Audio duration for ${audioFile} is undefined!`);
+//           reject(`Audio duration for ${audioFile} is undefined!`);
+//           return;
+//         }
+
+//         // const endTime = Math.min(startTime + audioDuration, videoDuration, startTime + 6);
+
+//         // 3.3 Build the complex filter string segment for this audio
+//         // complexFilter.push(
+//         //   `${lastAudioStream}volume=enable='between(t,${startTime},${endTime})':volume=0.3[v${i}]`,
+//         //   `[${inputIndex}:a]adelay=${startTime}s|${startTime}s,apad=whole_dur=6[a${i}]`,
+//         //   `[v${i}][a${i}]amix=inputs=2:duration=first:dropout_transition=2[mix${i}]`
+//         // );
+          
+//         complexFilter.push(
+//           // ... volume filter (v${i} is not used anymore)...
+//           `[${inputIndex}:a]adelay=${startTime}s|${startTime}s,apad=whole_dur=6[a${i}]`,
+//           // Mix the current audio with the *original* video audio
+//           `${lastAudioStream}[a${i}]amix=inputs=2:duration=longest:dropout_transition=2[mix${i}]`
+//         );
+
+//         lastAudioStream = `[mix${i}]`;
+//         inputIndex++;
+//       }
+
+//       // 4. Apply the complex filter and map the video stream
+//       // command = command.complexFilter(
+//       //   complexFilter, // Use only the audio filters
+//       //   ['0:v', lastAudioStream] // Map the video and the last mixed audio stream
+//       // );
+//       command = command.complexFilter(complexFilter, lastAudioStream);
+
+//       // 5. Set the output file and run the command
+//       command
+//         .outputOptions([
+//             '-map 0:v',       // Map the video stream from the first input
+//             '-c:v copy',      // Copy the video stream without re-encoding
+//             '-y'             // Overwrite output file without asking
+//           ])
+//         .output(outputPath)
+//         .on('start', (commandLine) => {
+//           console.log('FFmpeg command:', commandLine);
+//         })
+//         .on('end', () => {
+//           console.log('Voiceover added successfully!');
+//           resolve();
+//         })
+//         .on('error', (err) => {
+//           console.error('Error adding voiceover:', err);
+//           reject(err);
+//         })
+//         .run();
+        const delaySeconds = 6;
+        const command = ffmpeg(videoPath);
+
+        // Add voiceover files as inputs
+        speechAudioFiles.forEach((file) => {
+          command.input(file);
         });
-        const audioDuration = audioMetadata.format.duration;
 
-        if (audioDuration === undefined) {
-          console.error(`Error: Audio duration for ${audioFile} is undefined!`);
-          reject(`Audio duration for ${audioFile} is undefined!`);
-          return;
-        }
+        // Build the complex filter string
+        let filter = '';
+        const mixInputs: string[] = [];
+        const weights: number[] = [];
 
-        const endTime = Math.min(startTime + audioDuration, videoDuration, startTime + 6);
+        // Set the weight for the music (first input)
+        weights.push(0.7);
+        
+        speechAudioFiles.forEach((_, index) => {
+          const delayMs = index * delaySeconds * 1000;
+          const streamLabel = `a${index + 1}`;
 
-        // 3.3 Build the complex filter string segment for this audio
-        complexFilter.push(
-          `${lastAudioStream}volume=enable='between(t,${startTime},${endTime})':volume=0.3[v${i}]`,
-          `[${inputIndex}:a]adelay=${startTime}s|${startTime}s,apad=whole_dur=6[a${i}]`,
-          `[v${i}][a${i}]amix=inputs=2:duration=first:dropout_transition=2[mix${i}]`
-        );
+          // Add adelay filter for each voiceover
+          filter += `[${index + 1}:a]adelay=${delayMs}|${delayMs}[${streamLabel}];`;
+          mixInputs.push(`[${streamLabel}]`);
+            
+          // Set the weight for each voiceover (assuming you want them at full volume)
+          weights.push(1);
+        });
 
-        lastAudioStream = `[mix${i}]`;
-        inputIndex++;
-      }
+        // Use the 'weights' option in the amix filter
+        filter += `[0:a]${mixInputs.join('')}amix=inputs=${
+          speechAudioFiles.length + 1
+        }:duration=first:weights=${weights.join(' ')}[outa]`;
 
-      // 4. Apply the complex filter and map the video stream
-      // command = command.complexFilter(
-      //   complexFilter, // Use only the audio filters
-      //   ['0:v', lastAudioStream] // Map the video and the last mixed audio stream
-      // );
-      command = command.complexFilter(complexFilter, lastAudioStream);
-
-      // 5. Set the output file and run the command
-      command
-        .outputOptions([
-            '-map 0:v',       // Map the video stream from the first input
-            '-c:v copy',      // Copy the video stream without re-encoding
-            '-y'             // Overwrite output file without asking
-          ])
-        .output(outputPath)
-        .on('start', (commandLine) => {
-          console.log('FFmpeg command:', commandLine);
-        })
-        .on('end', () => {
-          console.log('Voiceover added successfully!');
-          resolve();
-        })
-        .on('error', (err) => {
-          console.error('Error adding voiceover:', err);
-          reject(err);
-        })
-        .run();
+        command
+          .complexFilter(filter)
+          .outputOptions(['-map 0:v', '-map [outa]'])
+          .output(outputPath)
+          .audioCodec('aac')
+          .videoCodec('copy') // Copy video stream without re-encoding
+          .outputOptions('-shortest') // Ensure output duration matches the shortest input
+          .on('start', (commandLine) => {
+            console.log('FFmpeg command:', commandLine);
+          })
+          .on('progress', (progress) => {
+            console.log('Processing: ' + progress.percent + '% done');
+          })
+          .on('end', () => {
+            console.log('Merging finished!');
+            resolve();
+          })
+          .on('error', (err) => {
+            console.error('Error:', err);
+            reject(err);
+          })
+          .run();
     } catch (err) {
       console.error('Error in addVoiceover:', err);
       reject(err);

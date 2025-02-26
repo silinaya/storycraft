@@ -1,4 +1,4 @@
-import { Storage, GetSignedUrlConfig } from '@google-cloud/storage';
+// import { Storage, GetSignedUrlConfig } from '@google-cloud/storage';
 import ffmpeg from 'fluent-ffmpeg';
 import { FfprobeData } from 'fluent-ffmpeg';
 import * as fs from 'fs';
@@ -57,7 +57,7 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
   const outputFileNameWithAudio = `${id}_with_audio.mp4`;
   const outputFileNameWithVoiceover = `${id}_with_voiceover.mp4`;
   let finalOutputPath;
-  const storage = new Storage();
+  // const storage = new Storage();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'video-concat-'));
   const concatenationList = path.join(tempDir, 'concat-list.txt');
 
@@ -66,7 +66,7 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
     console.log(`Download all videos`);
     console.log(gcsVideoUris);
     const localPaths = await Promise.all(
-      gcsVideoUris.map(async (signedUri, index) => {
+      gcsVideoUris.map(async (signedUri) => {
         // const uri = signedUrlToGcsUri(signedUri);
         // const match = uri.match(/gs:\/\/([^\/]+)\/(.+)/);
         // if (!match) {
@@ -221,101 +221,101 @@ async function addAudioToVideoWithFadeOut(
   });
 }
 
-async function createVideoWithVoiceover(
-  videoPath: string,
-  voiceoverSegments: string[],
-  outputPath: string
-): Promise<void> {
-  console.log('createVideoWithVoiceover!!!');
-  return new Promise<void>((resolve, reject) => {
+// async function createVideoWithVoiceover(
+//   videoPath: string,
+//   voiceoverSegments: string[],
+//   outputPath: string
+// ): Promise<void> {
+//   console.log('createVideoWithVoiceover!!!');
+//   return new Promise<void>((resolve, reject) => {
 
 
-    // Check directory exists and is writable
-    try {
-      fs.accessSync(path.dirname(outputPath), fs.constants.W_OK);
-    } catch (err) {
-      console.error('Directory not writable:', err);
-    }
+//     // Check directory exists and is writable
+//     try {
+//       fs.accessSync(path.dirname(outputPath), fs.constants.W_OK);
+//     } catch (err) {
+//       console.error('Directory not writable:', err);
+//     }
 
 
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-concat-'));
-    const combinedVoiceoverPath = path.join(tmpDir, 'combined_voiceover.mp3');
+//     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-concat-'));
+//     const combinedVoiceoverPath = path.join(tmpDir, 'combined_voiceover.mp3');
 
-    // 1. Concatenate voiceover segments (same as before)
-    const voiceoverListPath = path.join(tmpDir, 'voiceover_list.txt');
-    const voiceoverList = voiceoverSegments.map((segment, index) => {
-      const startTime = index * 8;
-      return `file '${segment}'\noutpoint ${startTime}`;
-    }).join('\n');
-    fs.writeFileSync(voiceoverListPath, voiceoverList);
+//     // 1. Concatenate voiceover segments (same as before)
+//     const voiceoverListPath = path.join(tmpDir, 'voiceover_list.txt');
+//     const voiceoverList = voiceoverSegments.map((segment, index) => {
+//       const startTime = index * 8;
+//       return `file '${segment}'\noutpoint ${startTime}`;
+//     }).join('\n');
+//     fs.writeFileSync(voiceoverListPath, voiceoverList);
 
-    ffmpeg()
-      .input(voiceoverListPath)
-      .inputOptions(['-safe', '0', '-f', 'concat']) 
-      .output(combinedVoiceoverPath)
-      .on('start', (commandLine) => {
-        console.log('FFmpeg command:', commandLine);
-      })
-      .on('end', () => {
+//     ffmpeg()
+//       .input(voiceoverListPath)
+//       .inputOptions(['-safe', '0', '-f', 'concat']) 
+//       .output(combinedVoiceoverPath)
+//       .on('start', (commandLine) => {
+//         console.log('FFmpeg command:', commandLine);
+//       })
+//       .on('end', () => {
 
-        // 2. Get video duration (needed for amix filter)
-        ffmpeg.ffprobe(videoPath, (err, metadata) => {
-          if (err) {
-            cleanup(tmpDir, voiceoverListPath);
-            return reject(err);
-          }
-          const videoDuration = metadata.format.duration || 0;
+//         // 2. Get video duration (needed for amix filter)
+//         ffmpeg.ffprobe(videoPath, (err, metadata) => {
+//           if (err) {
+//             cleanup(tmpDir, voiceoverListPath);
+//             return reject(err);
+//           }
+//           const videoDuration = metadata.format.duration || 0;
 
 
-          // 3. Mix with dynamic volume using amix and volume expression
-          ffmpeg(videoPath)
-            .input(combinedVoiceoverPath)
-            .complexFilter([
-              {
-                filter: 'amix',
-                options: {
-                  inputs: 2,
-                  duration: 'first',
-                  weights: `if(gte(t,T${voiceoverSegments.length-1}*8),1,0.6) 1`, // Dynamic weight for video audio
-                },
-                outputs: 'mixed'
-              }
-            ])
+//           // 3. Mix with dynamic volume using amix and volume expression
+//           ffmpeg(videoPath)
+//             .input(combinedVoiceoverPath)
+//             .complexFilter([
+//               {
+//                 filter: 'amix',
+//                 options: {
+//                   inputs: 2,
+//                   duration: 'first',
+//                   weights: `if(gte(t,T${voiceoverSegments.length-1}*8),1,0.6) 1`, // Dynamic weight for video audio
+//                 },
+//                 outputs: 'mixed'
+//               }
+//             ])
 
-            .map('0:v') // Video from original input
-            .map('[mixed]') // Audio from mixed output
-            .audioCodec('aac')
-            .videoCodec('copy')
-            .output(outputPath)
-            .outputOptions('-y')  // Force overwrite
-            .outputOptions('-shortest') // Ensure output duration matches the shortest input
-            .on('start', (commandLine) => {
-              console.log('FFmpeg command:', commandLine);
-            })
-            .on('end', () => {
-              cleanup(tmpDir, voiceoverListPath, combinedVoiceoverPath);
-              resolve();
-            })
-            .on('error', (err) => {
-              cleanup(tmpDir, voiceoverListPath, combinedVoiceoverPath);
-              reject(err);
-            })
-            .run();
-        });
-      })
-      .on('error', (err) => {
-        cleanup(tmpDir, voiceoverListPath);
-        reject(err);
-      })
-      .run();
+//             .map('0:v') // Video from original input
+//             .map('[mixed]') // Audio from mixed output
+//             .audioCodec('aac')
+//             .videoCodec('copy')
+//             .output(outputPath)
+//             .outputOptions('-y')  // Force overwrite
+//             .outputOptions('-shortest') // Ensure output duration matches the shortest input
+//             .on('start', (commandLine) => {
+//               console.log('FFmpeg command:', commandLine);
+//             })
+//             .on('end', () => {
+//               cleanup(tmpDir, voiceoverListPath, combinedVoiceoverPath);
+//               resolve();
+//             })
+//             .on('error', (err) => {
+//               cleanup(tmpDir, voiceoverListPath, combinedVoiceoverPath);
+//               reject(err);
+//             })
+//             .run();
+//         });
+//       })
+//       .on('error', (err) => {
+//         cleanup(tmpDir, voiceoverListPath);
+//         reject(err);
+//       })
+//       .run();
 
-    function cleanup(tmpDir: string, voiceoverListPath?: string, combinedVoiceoverPath?: string) {
-      if (voiceoverListPath) fs.unlinkSync(voiceoverListPath);
-      if (combinedVoiceoverPath) fs.unlinkSync(combinedVoiceoverPath);
-      fs.rmSync(tmpDir, { recursive: true });
-    }
-  });
-}
+//     function cleanup(tmpDir: string, voiceoverListPath?: string, combinedVoiceoverPath?: string) {
+//       if (voiceoverListPath) fs.unlinkSync(voiceoverListPath);
+//       if (combinedVoiceoverPath) fs.unlinkSync(combinedVoiceoverPath);
+//       fs.rmSync(tmpDir, { recursive: true });
+//     }
+//   });
+// }
 
 async function addVoiceover(
   videoPath: string,

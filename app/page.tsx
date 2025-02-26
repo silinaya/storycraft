@@ -7,8 +7,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { SceneData } from './components/scene-data'
 import { SlideshowModal } from './components/slideshow-modal'
 import { VideoPlayer } from "./components/video-player"
-import { CharactersTab } from './components/characters-tab'
-import { SettingsTab } from "./components/settings-tab"
 import { ScenarioTab } from "./components/scenario-tab"
 import { generateScenes } from './actions/generate-scenes'
 import { regenerateImage } from './actions/regenerate-image'

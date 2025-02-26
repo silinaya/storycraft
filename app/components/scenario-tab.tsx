@@ -1,6 +1,5 @@
 'use client'
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface ScenarioTabProps {
     scenario: {
@@ -16,7 +15,7 @@ export function ScenarioTab({ scenario }: ScenarioTabProps) {
     return (
         <div className="max-w-xl mx-auto space-y-4">
             <p>{scenario.scenario}</p>
-            {scenario.characters.map((character, index) => (
+            {scenario.characters.map((character) => (
                 <>
                     <div className="col-span-1">
                         <h3 className="text-xl font-bold">{character.name}</h3>
@@ -26,7 +25,7 @@ export function ScenarioTab({ scenario }: ScenarioTabProps) {
                     </div>
                 </>
             ))}
-            {scenario.settings.map((setting, index) => (
+            {scenario.settings.map((setting) => (
                 <>
                     <div className="col-span-1">
                         <h3 className="text-xl font-bold">{setting.name}</h3>

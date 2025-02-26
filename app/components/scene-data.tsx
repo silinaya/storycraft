@@ -40,6 +40,7 @@ export function SceneData({
   
   useEffect(() => {
     const getVideoUrl = async () => {
+        console.log('Video URL change!')
         if (typeof scene.videoUri === 'string') {
           setVideoUrl(scene.videoUri);
         } else if (scene.videoUri instanceof Promise) {
@@ -50,6 +51,8 @@ export function SceneData({
             console.error('Error resolving video URL:', error);
             setVideoUrl(null); // or some default error URL
           }
+        } else {
+          setVideoUrl(null);
         }
     }
 

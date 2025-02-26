@@ -7,6 +7,20 @@ import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid'
 
 
+
+const MOOD_MUSIC: { [key: string]: string } = {
+  'Angry': '[Angry] Drop and Roll - Silent Partner.mp3',
+  'Bright': '[Bright] Crimson Fly - Huma-Huma.mp3',
+  'Calm': '[Calm] Pachabelly - Huma-Huma.mp3',
+  'Dark': '[Dark] Court and Page - Silent Partner.mp3',
+  'Funky': '[Funky] Lines - Topher Mohr and Alex Elena.mp3',
+  'Happy': '[Happy] Good Starts - Jingle Punks.mp3',
+  'Inspirational': '[Inspirational] Grass - Silent Partner.mp3',
+  'Romantic': '[Romantic] Ode to Joy - Cooper Cannell.mp3',
+  'Sad': '[Sad] Ether - Silent Partner.mp3'
+}
+
+
 /**
  * Transforms a GCS signed URL into a GCS URI (gs://<bucket>/<path>).
  *
@@ -35,9 +49,9 @@ export function signedUrlToGcsUri(signedUrl: string): string {
   }
 }
 
-export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles: string[]): Promise<string> {
+export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles: string[], withVoiceOver: boolean, mood: string): Promise<string> {
   console.log(`Concatenate all videos`);
-  const withVoiceOver = true;
+  console.log(mood);
   const id = uuidv4();
   const outputFileName = `${id}.mp4`;
   const outputFileNameWithAudio = `${id}_with_audio.mp4`;
@@ -46,26 +60,29 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
   const storage = new Storage();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'video-concat-'));
   const concatenationList = path.join(tempDir, 'concat-list.txt');
-  
+
   try {
     // Download all videos to local temp directory
     console.log(`Download all videos`);
+    console.log(gcsVideoUris);
     const localPaths = await Promise.all(
       gcsVideoUris.map(async (signedUri, index) => {
-        const uri = signedUrlToGcsUri(signedUri);
-        const match = uri.match(/gs:\/\/([^\/]+)\/(.+)/);
-        if (!match) {
-          throw new Error(`Invalid GCS URI format: ${uri}`);
-        }
-        
-        const [, bucket, filePath] = match;
-        const localPath = path.join(tempDir, `video-${index}${path.extname(filePath)}`);
-        
-        await storage
-          .bucket(bucket)
-          .file(filePath)
-          .download({ destination: localPath });
-        
+        // const uri = signedUrlToGcsUri(signedUri);
+        // const match = uri.match(/gs:\/\/([^\/]+)\/(.+)/);
+        // if (!match) {
+        //   throw new Error(`Invalid GCS URI format: ${uri}`);
+        // }
+
+        // const [, bucket, filePath] = match;
+        const publicDir = path.join(process.cwd(), 'public');
+        const localPath = path.join(publicDir, signedUri);
+        // const localPath = path.join(tempDir, `video-${index}${path.extname(filePath)}`);
+
+        // await storage
+        //   .bucket(bucket)
+        //   .file(filePath)
+        //   .download({ destination: localPath });
+
         return localPath;
       })
     );
@@ -75,6 +92,12 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
       .map(path => `file '${path}'`)
       .join('\n');
     fs.writeFileSync(concatenationList, fileContent);
+
+
+    const writtenFileContent = await fs.readFileSync(concatenationList, 'utf8'); // 'utf8' for text files
+
+    // 3. Log the content
+    console.log(writtenFileContent);
 
     // Concatenate videos using FFmpeg
     console.log(`Concatenate videos using FFmpeg`);
@@ -90,9 +113,9 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
         .run();
     });
     finalOutputPath = outputPath;
-      
+
     const publicDir = path.join(process.cwd(), 'public');
-    const audioFile = path.join(publicDir, 'Good Starts - Jingle Punks.mp3');
+    const audioFile = path.join(publicDir, MOOD_MUSIC[mood]);
     const outputPathWithAudio = path.join(tempDir, outputFileNameWithAudio);
     const outputPathWithVoiceover = path.join(tempDir, outputFileNameWithVoiceover);
 
@@ -100,32 +123,37 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
     console.log(`Adding music`);
     await addAudioToVideoWithFadeOut(outputPath, audioFile, outputPathWithAudio)
     finalOutputPath = outputPathWithAudio;
-      
-    console.log(`Adding voiceover`);
-    console.log(speachAudioFiles.length);
+
+    console.log(withVoiceOver);
     if (withVoiceOver) {
-        await addVoiceover(outputPathWithAudio, speachAudioFiles, outputPathWithVoiceover)
-        finalOutputPath = outputPathWithVoiceover;
+      console.log(`Adding voiceover`);
+      console.log(speachAudioFiles.length);
+      await addVoiceover(outputPathWithAudio, speachAudioFiles, outputPathWithVoiceover)
+      // await createVideoWithVoiceover(outputPathWithAudio, speachAudioFiles, outputPathWithVoiceover)
+      finalOutputPath = outputPathWithVoiceover;
     }
-      
-    // Upload result to GCS
-    console.log(`Upload result to GCS`);
-    const bucket = storage.bucket('svc-demo-vertex-us');
-    await bucket
-      .upload(finalOutputPath, {
-        destination: outputFileName,
-        metadata: {
-          contentType: 'video/mp4',
-        },
-      });
-    const file = bucket.file(outputFileName);
-    // Generate a signed URL (as explained in the previous response)
-    const options: GetSignedUrlConfig = {
-      version: 'v4',
-      action: 'read', // Change this to the desired action
-      expires: Date.now() + 60 * 60 * 1000, // 1 hour expiration
-    };
-    const [url] = await file.getSignedUrl(options);
+
+    const publicFile = path.join(publicDir, outputFileNameWithVoiceover);
+    fs.copyFileSync(finalOutputPath, publicFile);
+    const url = outputFileNameWithVoiceover;
+    // // Upload result to GCS
+    // console.log(`Upload result to GCS`);
+    // const bucket = storage.bucket('svc-demo-vertex-us');
+    // await bucket
+    //   .upload(finalOutputPath, {
+    //     destination: outputFileName,
+    //     metadata: {
+    //       contentType: 'video/mp4',
+    //     },
+    //   });
+    // const file = bucket.file(outputFileName);
+    // // Generate a signed URL (as explained in the previous response)
+    // const options: GetSignedUrlConfig = {
+    //   version: 'v4',
+    //   action: 'read', // Change this to the desired action
+    //   expires: Date.now() + 60 * 60 * 1000, // 1 hour expiration
+    // };
+    // const [url] = await file.getSignedUrl(options);
     console.log('url:', url);
     return url;
   } finally {
@@ -154,7 +182,7 @@ async function addAudioToVideoWithFadeOut(
         reject(new Error('Could not determine video duration'));
         return;
       }
-      
+
       // Fade out settings
       const fadeOutDuration = 3; // seconds
       const fadeOutStartTime = videoDuration - fadeOutDuration;
@@ -193,6 +221,102 @@ async function addAudioToVideoWithFadeOut(
   });
 }
 
+async function createVideoWithVoiceover(
+  videoPath: string,
+  voiceoverSegments: string[],
+  outputPath: string
+): Promise<void> {
+  console.log('createVideoWithVoiceover!!!');
+  return new Promise<void>((resolve, reject) => {
+
+
+    // Check directory exists and is writable
+    try {
+      fs.accessSync(path.dirname(outputPath), fs.constants.W_OK);
+    } catch (err) {
+      console.error('Directory not writable:', err);
+    }
+
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-concat-'));
+    const combinedVoiceoverPath = path.join(tmpDir, 'combined_voiceover.mp3');
+
+    // 1. Concatenate voiceover segments (same as before)
+    const voiceoverListPath = path.join(tmpDir, 'voiceover_list.txt');
+    const voiceoverList = voiceoverSegments.map((segment, index) => {
+      const startTime = index * 8;
+      return `file '${segment}'\noutpoint ${startTime}`;
+    }).join('\n');
+    fs.writeFileSync(voiceoverListPath, voiceoverList);
+
+    ffmpeg()
+      .input(voiceoverListPath)
+      .inputOptions(['-safe', '0', '-f', 'concat']) 
+      .output(combinedVoiceoverPath)
+      .on('start', (commandLine) => {
+        console.log('FFmpeg command:', commandLine);
+      })
+      .on('end', () => {
+
+        // 2. Get video duration (needed for amix filter)
+        ffmpeg.ffprobe(videoPath, (err, metadata) => {
+          if (err) {
+            cleanup(tmpDir, voiceoverListPath);
+            return reject(err);
+          }
+          const videoDuration = metadata.format.duration || 0;
+
+
+          // 3. Mix with dynamic volume using amix and volume expression
+          ffmpeg(videoPath)
+            .input(combinedVoiceoverPath)
+            .complexFilter([
+              {
+                filter: 'amix',
+                options: {
+                  inputs: 2,
+                  duration: 'first',
+                  weights: `if(gte(t,T${voiceoverSegments.length-1}*8),1,0.6) 1`, // Dynamic weight for video audio
+                },
+                outputs: 'mixed'
+              }
+            ])
+
+            .map('0:v') // Video from original input
+            .map('[mixed]') // Audio from mixed output
+            .audioCodec('aac')
+            .videoCodec('copy')
+            .output(outputPath)
+            .outputOptions('-y')  // Force overwrite
+            .outputOptions('-shortest') // Ensure output duration matches the shortest input
+            .on('start', (commandLine) => {
+              console.log('FFmpeg command:', commandLine);
+            })
+            .on('end', () => {
+              cleanup(tmpDir, voiceoverListPath, combinedVoiceoverPath);
+              resolve();
+            })
+            .on('error', (err) => {
+              cleanup(tmpDir, voiceoverListPath, combinedVoiceoverPath);
+              reject(err);
+            })
+            .run();
+        });
+      })
+      .on('error', (err) => {
+        cleanup(tmpDir, voiceoverListPath);
+        reject(err);
+      })
+      .run();
+
+    function cleanup(tmpDir: string, voiceoverListPath?: string, combinedVoiceoverPath?: string) {
+      if (voiceoverListPath) fs.unlinkSync(voiceoverListPath);
+      if (combinedVoiceoverPath) fs.unlinkSync(combinedVoiceoverPath);
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+}
+
 async function addVoiceover(
   videoPath: string,
   speechAudioFiles: string[],
@@ -215,140 +339,60 @@ async function addVoiceover(
         return;
       }
 
-      // 2. Prepare the command
-//       let command = ffmpeg(videoPath);
-//       const complexFilter: string[] = [];
-//       let inputIndex = 1;
-//       let lastAudioStream = "[0:a]";
+      const delaySeconds = 8;
+      const command = ffmpeg(videoPath);
 
-//       // 3. Loop through the audio files and generate the filter
-//       for (let i = 0; i < speechAudioFiles.length; i++) {
-//         const startTime = i * 6;
-//         if (startTime >= videoDuration) {
-//           break;
-//         }
-//         const audioFile = speechAudioFiles[i];
+      // Add voiceover files as inputs
+      speechAudioFiles.forEach((file) => {
+        command.input(file);
+      });
 
-//         // 3.1 Add the audio input
-//         command = command.input(audioFile);
+      // Build the complex filter string
+      let filter = '';
+      const mixInputs: string[] = [];
+      const weights: number[] = [];
 
-//         // 3.2 Get audio duration for potential padding or trimming
-//         const audioMetadata: FfprobeData = await new Promise((resolve, reject) => {
-//           ffmpeg.ffprobe(audioFile, (err, metadata) => {
-//             if (err) reject(err);
-//             else resolve(metadata);
-//           });
-//         });
-//         const audioDuration = audioMetadata.format.duration;
+      // Set the weight for the music (first input)
+      weights.push(0.6);
 
-//         if (audioDuration === undefined) {
-//           console.error(`Error: Audio duration for ${audioFile} is undefined!`);
-//           reject(`Audio duration for ${audioFile} is undefined!`);
-//           return;
-//         }
+      speechAudioFiles.forEach((_, index) => {
+        const delayMs = index * delaySeconds * 1000;
+        const streamLabel = `a${index + 1}`;
 
-//         // const endTime = Math.min(startTime + audioDuration, videoDuration, startTime + 6);
+        // Add adelay filter for each voiceover
+        filter += `[${index + 1}:a]adelay=${delayMs}|${delayMs}[${streamLabel}];`;
+        mixInputs.push(`[${streamLabel}]`);
 
-//         // 3.3 Build the complex filter string segment for this audio
-//         // complexFilter.push(
-//         //   `${lastAudioStream}volume=enable='between(t,${startTime},${endTime})':volume=0.3[v${i}]`,
-//         //   `[${inputIndex}:a]adelay=${startTime}s|${startTime}s,apad=whole_dur=6[a${i}]`,
-//         //   `[v${i}][a${i}]amix=inputs=2:duration=first:dropout_transition=2[mix${i}]`
-//         // );
-          
-//         complexFilter.push(
-//           // ... volume filter (v${i} is not used anymore)...
-//           `[${inputIndex}:a]adelay=${startTime}s|${startTime}s,apad=whole_dur=6[a${i}]`,
-//           // Mix the current audio with the *original* video audio
-//           `${lastAudioStream}[a${i}]amix=inputs=2:duration=longest:dropout_transition=2[mix${i}]`
-//         );
+        // Set the weight for each voiceover (assuming you want them at full volume)
+        weights.push(1);
+      });
 
-//         lastAudioStream = `[mix${i}]`;
-//         inputIndex++;
-//       }
-
-//       // 4. Apply the complex filter and map the video stream
-//       // command = command.complexFilter(
-//       //   complexFilter, // Use only the audio filters
-//       //   ['0:v', lastAudioStream] // Map the video and the last mixed audio stream
-//       // );
-//       command = command.complexFilter(complexFilter, lastAudioStream);
-
-//       // 5. Set the output file and run the command
-//       command
-//         .outputOptions([
-//             '-map 0:v',       // Map the video stream from the first input
-//             '-c:v copy',      // Copy the video stream without re-encoding
-//             '-y'             // Overwrite output file without asking
-//           ])
-//         .output(outputPath)
-//         .on('start', (commandLine) => {
-//           console.log('FFmpeg command:', commandLine);
-//         })
-//         .on('end', () => {
-//           console.log('Voiceover added successfully!');
-//           resolve();
-//         })
-//         .on('error', (err) => {
-//           console.error('Error adding voiceover:', err);
-//           reject(err);
-//         })
-//         .run();
-        const delaySeconds = 6;
-        const command = ffmpeg(videoPath);
-
-        // Add voiceover files as inputs
-        speechAudioFiles.forEach((file) => {
-          command.input(file);
-        });
-
-        // Build the complex filter string
-        let filter = '';
-        const mixInputs: string[] = [];
-        const weights: number[] = [];
-
-        // Set the weight for the music (first input)
-        weights.push(0.7);
-        
-        speechAudioFiles.forEach((_, index) => {
-          const delayMs = index * delaySeconds * 1000;
-          const streamLabel = `a${index + 1}`;
-
-          // Add adelay filter for each voiceover
-          filter += `[${index + 1}:a]adelay=${delayMs}|${delayMs}[${streamLabel}];`;
-          mixInputs.push(`[${streamLabel}]`);
-            
-          // Set the weight for each voiceover (assuming you want them at full volume)
-          weights.push(1);
-        });
-
-        // Use the 'weights' option in the amix filter
-        filter += `[0:a]${mixInputs.join('')}amix=inputs=${
-          speechAudioFiles.length + 1
+      // Use the 'weights' option in the amix filter
+      filter += `[0:a]${mixInputs.join('')}amix=inputs=${speechAudioFiles.length + 1
         }:duration=first:weights=${weights.join(' ')}[outa]`;
 
-        command
-          .complexFilter(filter)
-          .outputOptions(['-map 0:v', '-map [outa]'])
-          .output(outputPath)
-          .audioCodec('aac')
-          .videoCodec('copy') // Copy video stream without re-encoding
-          .outputOptions('-shortest') // Ensure output duration matches the shortest input
-          .on('start', (commandLine) => {
-            console.log('FFmpeg command:', commandLine);
-          })
-          .on('progress', (progress) => {
-            console.log('Processing: ' + progress.percent + '% done');
-          })
-          .on('end', () => {
-            console.log('Merging finished!');
-            resolve();
-          })
-          .on('error', (err) => {
-            console.error('Error:', err);
-            reject(err);
-          })
-          .run();
+      command
+        .complexFilter(filter)
+        .outputOptions(['-map 0:v', '-map [outa]'])
+        .output(outputPath)
+        .audioCodec('aac')
+        .videoCodec('copy') // Copy video stream without re-encoding
+        .outputOptions('-shortest') // Ensure output duration matches the shortest input
+        .on('start', (commandLine) => {
+          console.log('FFmpeg command:', commandLine);
+        })
+        .on('progress', (progress) => {
+          console.log('Processing: ' + progress.percent + '% done');
+        })
+        .on('end', () => {
+          console.log('Merging finished!');
+          resolve();
+        })
+        .on('error', (err) => {
+          console.error('Error:', err);
+          reject(err);
+        })
+        .run();
     } catch (err) {
       console.error('Error in addVoiceover:', err);
       reject(err);

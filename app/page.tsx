@@ -3,14 +3,38 @@
 import { useState, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { SceneData } from './components/scene-data'
 import { SlideshowModal } from './components/slideshow-modal'
 import { VideoPlayer } from "./components/video-player"
+import { CharactersTab } from './components/characters-tab'
+import { SettingsTab } from "./components/settings-tab"
+import { ScenarioTab } from "./components/scenario-tab"
 import { generateScenes } from './actions/generate-scenes'
 import { regenerateImage } from './actions/regenerate-image'
 import { editVideo } from './actions/generate-video'
 import { resizeImage } from './actions/resize-image'
 import { Loader2, FileSlidersIcon as Slideshow, Video } from 'lucide-react'
+import { ScenarioModal } from './components/scenario-modal'
+import { StyleSelector, type Style } from "./components/style-selector"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Checkbox } from '@/components/ui/checkbox'
+
+const styles: Style[] = [
+  { name: "Live-Action", image: "https://images.unsplash.com/photo-1585951237318-9ea5e175b891?w=500&h=500&fit=crop" },
+  { name: "2D Animation", image: "https://images.unsplash.com/photo-1601645191163-3fc0d5d64e35?rect=1500,1550,500,500&w=500&h=500&fit=crop" },
+  { name: "Anime", image: "https://images.unsplash.com/photo-1613376023733-0a73315d9b06?rect=4000,650,500,500&w=500&h=500&fit=crop" },
+  { name: "3D Animation", image: "https://images.unsplash.com/photo-1628260412297-a3377e45006f??w=500&h=500&fit=crop" },
+  { name: "Claymation Animation", image: "https://images.unsplash.com/photo-1733173372615-accf145e3b17?w=500&h=500&fit=crop" },
+]
+
+interface Scenario {
+  scenario: string;
+  genre: string;
+  mood: string;
+  characters: Array<{name:string, description: string}>;
+  settings: Array<{name:string, description: string}>;
+}
 
 interface Scene {
   imagePrompt: string;
@@ -23,14 +47,19 @@ interface Scene {
 
 export default function Home() {
   const [pitch, setPitch] = useState('')
+  const [style, setStyle] = useState('Live-Action')
   const [numScenes, setNumScenes] = useState(8)
   const [isLoading, setIsLoading] = useState(false)
+  const [withVoiceOver, setWithVoiceOver] = useState(false)
   const [isVideoLoading, setIsVideoLoading] = useState(false)
+  const [scenario, setScenario] = useState<Scenario>({scenario:'', genre: '', mood:'', characters: [], settings: []})
   const [scenes, setScenes] = useState<Array<Scene>>([])
   const [generatingScenes, setGeneratingScenes] = useState<Set<number>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isSlideshowOpen, setIsSlideshowOpen] = useState(false)
+  const [isScenarioOpen, setScenarioOpen] = useState(false)
   const [videoUri, setVideoUri] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<string>("storyboard")
   
   const FALLBACK_URL = "https://videos.pexels.com/video-files/3042473/3042473-sd_426_240_30fps.mp4"
   
@@ -43,9 +72,9 @@ export default function Home() {
     setIsLoading(true)
     setErrorMessage(null)
     try {
-      const generatedScenes = await generateScenes(pitch, numScenes)
-      setScenes(generatedScenes)
-      setPitch('')
+      const scenario = await generateScenes(pitch, numScenes, style)
+      setScenario(scenario)
+      setScenes(scenario.scenes)
     } catch (error) {
       console.error('Error generating scenes:', error)
       setErrorMessage(error instanceof Error ? error.message : 'An unknown error occurred while generating scenes')
@@ -107,6 +136,8 @@ export default function Home() {
     setIsVideoLoading(true)
     setErrorMessage(null)
     try {
+        console.log('Edit Video');
+        console.log(withVoiceOver);
         if (scenes.every((scene) => typeof scene.videoUri === 'string')) {
             const result = await editVideo(
               await Promise.all(
@@ -116,7 +147,9 @@ export default function Home() {
                     videoUri: scene.videoUri,
                   };
                 })
-              )
+              ),
+              scenario.mood,
+              withVoiceOver,
             );
             if (result.success) {
                 setVideoUri(result.videoUrl)
@@ -250,12 +283,12 @@ export default function Home() {
             </p>
           </div>
           <div className="space-y-4">
-            <Input
+            <Textarea
               value={pitch}
               onChange={(e) => setPitch(e.target.value)}
               placeholder="Once upon a time..."
               className="min-h-[100px]"
-            />
+              rows={4} />
             <div className="flex items-center space-x-2">
               <label htmlFor="numScenes" className="text-sm font-medium">
                 Number of Scenes:
@@ -268,6 +301,20 @@ export default function Home() {
                 value={numScenes}
                 onChange={(e) => setNumScenes(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
                 className="w-20"
+              />
+            </div>
+            <div className="space-y-2">
+              <StyleSelector styles={styles} onSelect={setStyle} />
+            </div>
+            <div className="flex items-center space-x-2">
+              <label htmlFor="style" className="text-sm font-medium">
+                Style:
+              </label>
+              <Input
+                id="style"
+                value={style}
+                onChange={(e) => setStyle(e.target.value)}
+                className="w-200"
               />
             </div>
             <Button 
@@ -292,98 +339,132 @@ export default function Home() {
           </div>
         </div>
       ) : (
-        <div className="space-y-8">
-          {videoUri && (
-            <div className="mb-8">
-              <VideoPlayer src={videoUri} />
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="scenario">Scenario</TabsTrigger>
+            <TabsTrigger value="storyboard">Storyboard</TabsTrigger>
+            <TabsTrigger value="video">Video</TabsTrigger>
+          </TabsList>
+          <TabsContent value="scenario">
+            <ScenarioTab scenario={scenario} />
+          </TabsContent>
+          <TabsContent value="storyboard">
+            <div className="space-y-8">
+              <div className="flex justify-end space-x-4">
+                <Button
+                  onClick={() => setIsSlideshowOpen(true)}
+                  className="bg-secondary text-secondary-foreground hover:bg-secondary/90"
+                  disabled={scenes.length === 0}
+                >
+                  <Slideshow className="mr-2 h-4 w-4" />
+                  Start Slideshow
+                </Button>
+                <Button 
+                  onClick={() => handleRegenerateAllImages()} 
+                  disabled={isLoading || generatingScenes.size > 0}
+                  className="bg-accent text-accent-foreground hover:bg-accent/90"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Regenerating...
+                    </>
+                  ) : (
+                    'Generate Storyboard Images'
+                  )}
+                </Button>
+                <Button
+                  onClick={() => handleGenerateAllVideos()}
+                  disabled={isVideoLoading || scenes.length === 0  || generatingScenes.size > 0}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  {isVideoLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating Videos...
+                    </>
+                  ) : (
+                    <>
+                      <Video className="mr-2 h-4 w-4" />
+                      Generate Videos
+                    </>
+                  )}
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {scenes.map((scene, index) => (
+                  <SceneData
+                    key={index}
+                    sceneNumber={index + 1}
+                    scene={scene}
+                    onUpdate={(updatedScene) => handleUpdateScene(index, updatedScene)}
+                    onRegenerateImage={() => handleRegenerateImage(index)}
+                    onGenerateVideo={() => handleGenerateVideo(index)}
+                    onUploadImage={(file) => handleUploadImage(index, file)}
+                    isGenerating={generatingScenes.has(index)}
+                  />
+                ))}
+              </div>
+              <div className="flex justify-center">
+                <Button onClick={() => setScenes([])} variant="outline" className="border-secondary text-secondary hover:bg-secondary/10">
+                  Start Over
+                </Button>
+              </div>
+              {errorMessage && (
+                <div className="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded whitespace-pre-wrap">
+                  {errorMessage}
+                </div>
+              )}
+              <div className="mt-auto pt-4 text-center text-xs text-gray-500">
+                  made with ❤️ by @mblanc
+              </div>
             </div>
-          )}
-          <div className="flex justify-end space-x-4">
-            <Button
-              onClick={() => setIsSlideshowOpen(true)}
-              className="bg-secondary text-secondary-foreground hover:bg-secondary/90"
-              disabled={scenes.length === 0}
-            >
-              <Slideshow className="mr-2 h-4 w-4" />
-              Start Slideshow
-            </Button>
-            <Button 
-              onClick={() => handleRegenerateAllImages()} 
-              disabled={isLoading || generatingScenes.size > 0}
-              className="bg-accent text-accent-foreground hover:bg-accent/90"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Regenerating...
-                </>
-              ) : (
-                'Generate Storyboard Images'
+          </TabsContent>
+          <TabsContent value="video">
+          <div className="space-y-8">
+              <div className="flex justify-end space-x-4">
+                <Button
+                  onClick={() => handleEditVideo()}
+                  disabled={isVideoLoading || scenes.length === 0 || !scenes.every((scene) => typeof scene.videoUri === 'string')  || generatingScenes.size > 0} 
+                  className="bg-purple-500 text-primary-foreground hover:bg-primary/90"
+                >
+                  {isVideoLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Editing Final Video...
+                    </>
+                  ) : (
+                    <>
+                      <Video className="mr-2 h-4 w-4" />
+                      Edit Final Video
+                    </>
+                  )}
+                </Button>
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="withVocieover" 
+                    checked={withVoiceOver} 
+                    onCheckedChange={(checked) => {
+                      const isChecked = typeof checked === "boolean" ? checked : false;
+                      console.log(isChecked);
+                      setWithVoiceOver(isChecked);
+                    }} />
+                  <label
+                    htmlFor="withVocieover"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Voiceover
+                  </label>
+                </div>
+              </div>
+              {videoUri && (
+                <div className="mb-8">
+                  <VideoPlayer src={videoUri} />
+                </div>
               )}
-            </Button>
-            <Button
-              onClick={() => handleGenerateAllVideos()}
-              disabled={isVideoLoading || scenes.length === 0  || generatingScenes.size > 0}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              {isVideoLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating Videos...
-                </>
-              ) : (
-                <>
-                  <Video className="mr-2 h-4 w-4" />
-                  Generate Videos
-                </>
-              )}
-            </Button>
-            <Button
-              onClick={() => handleEditVideo()}
-              disabled={isVideoLoading || scenes.length === 0 || !scenes.every((scene) => typeof scene.videoUri === 'string')  || generatingScenes.size > 0} 
-              className="bg-purple-500 text-primary-foreground hover:bg-primary/90"
-            >
-              {isVideoLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Editing Final Video...
-                </>
-              ) : (
-                <>
-                  <Video className="mr-2 h-4 w-4" />
-                  Edit Final Video
-                </>
-              )}
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {scenes.map((scene, index) => (
-              <SceneData
-                key={index}
-                sceneNumber={index + 1}
-                scene={scene}
-                onUpdate={(updatedScene) => handleUpdateScene(index, updatedScene)}
-                onRegenerateImage={() => handleRegenerateImage(index)}
-                onGenerateVideo={() => handleGenerateVideo(index)}
-                onUploadImage={(file) => handleUploadImage(index, file)}
-                isGenerating={generatingScenes.has(index)}
-              />
-            ))}
-          </div>
-          <div className="flex justify-center">
-            <Button onClick={() => setScenes([])} variant="outline" className="border-secondary text-secondary hover:bg-secondary/10">
-              Start Over
-            </Button>
-          </div>
-          {errorMessage && (
-            <div className="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded whitespace-pre-wrap">
-              {errorMessage}
             </div>
-          )}
-          <div className="mt-auto pt-4 text-center text-xs text-gray-500">
-              made with ❤️ by @mblanc
-          </div>
-        </div>
+          </TabsContent>
+        </Tabs>
+        
       )}
       {scenes.length > 0 && (
         <SlideshowModal
@@ -392,6 +473,11 @@ export default function Home() {
           onClose={() => setIsSlideshowOpen(false)}
         />
       )}
+      <ScenarioModal
+        isOpen={isScenarioOpen}
+        onClose={() => setScenarioOpen(false)}
+        scenario={scenario}
+      />
     </main>
   )
 }

@@ -1,8 +1,8 @@
 import { GoogleAuth } from 'google-auth-library';
 
 const LOCATION = 'us-central1';
-const PROJECT_ID = 'svc-demo-vertex';
-const MODEL = 'veo-001-preview-0815'; // veo-2.0-generate-exp
+const PROJECT_ID = 'veo-testing';
+const MODEL = 'veo-2.0-generate-exp'; // veo-2.0-generate-exp
 
 interface GenerateVideoResponse {
   name: string;
@@ -111,7 +111,7 @@ export async function generateSceneVideo(prompt: string, imageBase64: string): P
               },
             ],
             parameters: {
-              storageUri: "gs://svc-demo-vertex-us/",
+              storageUri: "gs://mb-cloud-llm-preview1-bucket/img2vid/",
               sampleCount: 1,
               aspectRatio: "16:9"
             },

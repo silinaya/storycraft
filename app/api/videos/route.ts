@@ -1,5 +1,7 @@
 import { generateSceneVideo, waitForOperation } from '@/lib/veo';
-import { Storage, GetSignedUrlConfig } from '@google-cloud/storage';
+import { Storage } from '@google-cloud/storage';
+import * as path from 'path';
+import * as fs from 'fs/promises';
 
 /**
  * Handles POST requests to generate videos from a list of scenes.
@@ -37,16 +39,26 @@ export async function POST(req: Request): Promise<Response> {
         const [bucketName, ...pathSegments] = gcsUri.replace("gs://", "").split("/");
         const fileName = pathSegments.join("/");
         
-        const options: GetSignedUrlConfig = {
-          version: 'v4',
-          action: 'read',
-          expires: Date.now() + 60 * 60 * 1000,
-        };
+        // const options: GetSignedUrlConfig = {
+        //   version: 'v4',
+        //   action: 'read',
+        //   expires: Date.now() + 60 * 60 * 1000,
+        // };
+
+        // storage.bucket(bucketName).file(fileName).copy()
         
-        const [url] = await storage.bucket(bucketName).file(fileName).getSignedUrl(options);
-        console.log(`Signed URL obtained for scene ${index + 1}`);
+        // const [url] = await storage.bucket(bucketName).file(fileName).getSignedUrl(options);
+        const publicDir = path.join(process.cwd(), 'public');
+        const videoFile = path.join(publicDir, fileName);
+        // Get the directory of the destination path
+        const destinationDir = path.dirname(videoFile);
+        // Create the destination directory if it doesn't exist (recursive)
+        await fs.mkdir(destinationDir, { recursive: true });
+
+        await storage.bucket(bucketName).file(fileName).download({ destination: videoFile });
+        console.log(`Signed URL obtained for scene ${videoFile}`);
         
-        return url;
+        return fileName;
       });
 
     const videoUrls = await Promise.all(videoGenerationTasks);

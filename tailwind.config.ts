@@ -36,7 +36,7 @@ const config: Config = {
                 foreground: '#FFFFFF',
             },
             muted: {
-                DEFAULT: '#DFBBB1',
+                DEFAULT: '#EBEBEB',
                 foreground: '#373F51',
             },
             destructive: {

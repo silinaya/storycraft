@@ -86,6 +86,7 @@ export function SlideshowModal({ scenes, isOpen, onClose }: SlideshowModalProps)
               <Image
                 src={currentScene.imageBase64 ? `data:image/png;base64,${currentScene.imageBase64}` : "/placeholder.svg"}
                 alt={`Scene ${currentIndex + 1}`}
+                fill
                 className="w-full h-full object-cover object-center rounded-md absolute inset-0"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;

@@ -70,6 +70,7 @@ export function EditSceneModal({ isOpen, onClose, scene, sceneNumber, onUpdate }
               <Image
                 src={scene.imageBase64 ? `data:image/png;base64,${scene.imageBase64}` : "/placeholder.svg"}
                 alt={`Scene ${sceneNumber}`}
+                fill
                 className="absolute inset-0 w-full h-full object-cover object-center"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;

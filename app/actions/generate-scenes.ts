@@ -13,8 +13,8 @@ interface Scenario {
     scenario: string;
     genre: string;
     mood: string;
-    characters: string[];
-    settings: string[];
+    characters: Array<{name:string, description: string}>;
+    settings: Array<{name:string, description: string}>;
     scenes: Scene[];
 }
 
@@ -28,17 +28,17 @@ interface Scene {
   videoUri?: string
 }
 
-export async function generateScenes(pitch: string, numScenes: number) {
+export async function generateScenes(pitch: string, numScenes: number, style: string) {
   try {
     const prompt = `
       You are tasked with generating a creative scenario for a short movie and creating prompts for storyboard illustrations. Follow these instructions carefully:
-1. First, you will be given a story pitch. This story pitch will be the foundation for your creative scenario.
+1. First, you will be given a story pitch. This story pitch will be the foundation for your scenario.
 
 <pitch>
 ${pitch}
 </pitch>
 
-2. Generate a creative scenario for a short movie based on the story pitch. The scenario should be engaging, unique, and suitable for visual storytelling. Do not include children in your scenario.
+2. Generate a scenario for an ad movie based on the story pitch. Stick as close as possible to the pitch. Do not include children in your scenario.
 
 3. What Music Genre will best fit this video, pick from: 
 - Alternative & Punk
@@ -70,7 +70,7 @@ ${pitch}
 
 5. After creating the scenario, generate ${numScenes} creative scenes to create a storyboard illustrating the scenario. Follow these guidelines for the scenes:
  a. For each scene, provide:
- 1. A detailed visual description for AI image generation (imagePrompt), the style should always be cinematic and photorealistic. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your image prompts.  Always use indefinite articles when describing character(s). No children.
+ 1. A detailed visual description for AI image generation (imagePrompt), the style should be ${style}. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your image prompts.  Always use indefinite articles when describing character(s). No children.
  2. A video prompt, focusing on the movement of the characters, objects, in the scene. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your image prompts.  Always use indefinite articles when describing character(s). No children.
  3. A scene description explaining what happens (description). You can use the character(s) name(s) in your descriptions.
  4. A short, narrator voiceover text. One full sentence, 6s max. (voiceover). You can use the character(s) name(s) in your vocieovers.
@@ -99,7 +99,8 @@ Here's an example of how your output should be structured:
   [...]
  ],
  "settings": [
-  "[setting 1 name], setting description",
+  {"name": [setting 1 name], "description": [setting 1 description]},
+  {"name": [setting 2 name], "description": [setting 2 description]},
   [...]
  ],
  "scenes": [
@@ -120,6 +121,7 @@ Remember, your goal is to create a compelling and visually interesting story tha
     const { text } = await generateText({
       model: vertex("gemini-2.0-flash-exp"),
       prompt,
+      temperature: 1
     })
 
     if (!text) {
@@ -183,7 +185,9 @@ Remember, your goal is to create a compelling and visually interesting story tha
       }
     }));
 
-    return scenesWithImages
+    scenario.scenes = scenesWithImages
+
+    return scenario
   } catch (error) {
     console.error('Error generating scenes:', error)
     throw new Error(`Failed to generate scenes: ${error instanceof Error ? error.message : 'Unknown error'}`)

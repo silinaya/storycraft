@@ -9,10 +9,11 @@ import { concatenateVideos } from '@/lib/ffmpeg';
 export async function editVideo(scenes: Array<{
     voiceover: string;
     videoUri?: string | Promise<string>;
-  }>): Promise<{ success: true, videoUrl: string } | { success: false, error: string }> {
+  }>, mood: string, withVoiceOver: boolean): Promise<{ success: true, videoUrl: string } | { success: false, error: string }> {
     
   try {
     console.log('Generating video...');
+    console.log(withVoiceOver)
     const filteredGcsVideoUris = scenes.map((scene) => scene.videoUri).filter((s): s is string => s !== undefined);
     const speachAudioFiles = await Promise.all(scenes.map(async (scene, index) => {
         try {
@@ -24,7 +25,7 @@ export async function editVideo(scenes: Array<{
         }
       }));
     const filteredSpeachAudioFiles = speachAudioFiles.filter((s): s is string => s !== undefined);
-    const url = await concatenateVideos(filteredGcsVideoUris, filteredSpeachAudioFiles);
+    const url = await concatenateVideos(filteredGcsVideoUris, filteredSpeachAudioFiles, withVoiceOver, mood);
     console.log('url:', url);
     console.log(`Generated video!`);
     return { success: true, videoUrl: url }

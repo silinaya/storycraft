@@ -1,7 +1,7 @@
 import { GoogleAuth } from 'google-auth-library';
 
-const LOCATION = 'us-central1';
-const PROJECT_ID = 'veo-testing';
+const LOCATION = process.env.LOCATION
+const PROJECT_ID = process.env.PROJECT_ID
 const MODEL = 'veo-2.0-generate-exp'; // veo-2.0-generate-exp
 
 interface GenerateVideoResponse {

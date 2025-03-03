@@ -4,8 +4,8 @@ import { experimental_generateImage as generateImage } from 'ai'
 import { createVertex } from '@ai-sdk/google-vertex'
 
 const vertex = createVertex({
-  project: 'svc-demo-vertex',
-  location: 'us-central1',
+  project: process.env.PROJECT_ID,
+  location: process.env.LOCATION,
 })
 
 export async function regenerateImage(prompt: string) {

@@ -5,8 +5,8 @@ import { createVertex } from '@ai-sdk/google-vertex'
 import { generateImageRest } from '@/lib/imagen';
 
 const vertex = createVertex({
-  project: 'svc-demo-vertex',
-  location: 'us-central1',
+  project: process.env.PROJECT_ID,
+  location: process.env.LOCATION,
 })
 
 interface Scenario {

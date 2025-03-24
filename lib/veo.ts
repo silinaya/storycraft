@@ -2,7 +2,8 @@ import { GoogleAuth } from 'google-auth-library';
 
 const LOCATION = process.env.LOCATION
 const PROJECT_ID = process.env.PROJECT_ID
-const MODEL = 'veo-2.0-generate-exp'; // veo-2.0-generate-exp
+const MODEL = process.env.MODEL
+const GCS_VIDEOS_STORAGE_URI = process.env.GCS_VIDEOS_STORAGE_URI
 
 interface GenerateVideoResponse {
   name: string;
@@ -111,7 +112,7 @@ export async function generateSceneVideo(prompt: string, imageBase64: string): P
               },
             ],
             parameters: {
-              storageUri: "gs://mb-cloud-llm-preview1-bucket/img2vid/",
+              storageUri: GCS_VIDEOS_STORAGE_URI,
               sampleCount: 1,
               aspectRatio: "16:9"
             },

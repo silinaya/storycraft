@@ -2,6 +2,10 @@ import { generateSceneVideo, waitForOperation } from '@/lib/veo';
 import { Storage } from '@google-cloud/storage';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { GetSignedUrlConfig } from '@google-cloud/storage';
+
+
+const USE_SIGNED_URL = process.env.USE_SIGNED_URL === "true";
 
 /**
  * Handles POST requests to generate videos from a list of scenes.
@@ -39,25 +43,28 @@ export async function POST(req: Request): Promise<Response> {
         const [bucketName, ...pathSegments] = gcsUri.replace("gs://", "").split("/");
         const fileName = pathSegments.join("/");
         
-        // const options: GetSignedUrlConfig = {
-        //   version: 'v4',
-        //   action: 'read',
-        //   expires: Date.now() + 60 * 60 * 1000,
-        // };
+        let url: string;
+        if (USE_SIGNED_URL) {
+          const options: GetSignedUrlConfig = {
+            version: 'v4',
+            action: 'read',
+            expires: Date.now() + 60 * 60 * 1000,
+          };
 
-        // storage.bucket(bucketName).file(fileName).copy()
-        
-        // const [url] = await storage.bucket(bucketName).file(fileName).getSignedUrl(options);
-        const publicDir = path.join(process.cwd(), 'public');
-        const videoFile = path.join(publicDir, fileName);
-        // Get the directory of the destination path
-        const destinationDir = path.dirname(videoFile);
-        // Create the destination directory if it doesn't exist (recursive)
-        await fs.mkdir(destinationDir, { recursive: true });
+          // storage.bucket(bucketName).file(fileName).copy()
+          
+          [url] = await storage.bucket(bucketName).file(fileName).getSignedUrl(options);
+        } else {
+          const publicDir = path.join(process.cwd(), 'public');
+          const videoFile = path.join(publicDir, fileName);
+          // Get the directory of the destination path
+          const destinationDir = path.dirname(videoFile);
+          // Create the destination directory if it doesn't exist (recursive)
+          await fs.mkdir(destinationDir, { recursive: true });
 
-        await storage.bucket(bucketName).file(fileName).download({ destination: videoFile });
-        console.log(`Signed URL obtained for scene ${videoFile}`);
-        
+          await storage.bucket(bucketName).file(fileName).download({ destination: videoFile });
+          url = fileName;
+        }
         return fileName;
       });
 

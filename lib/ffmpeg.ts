@@ -1,4 +1,4 @@
-// import { Storage, GetSignedUrlConfig } from '@google-cloud/storage';
+import { Storage, GetSignedUrlConfig } from '@google-cloud/storage';
 import ffmpeg from 'fluent-ffmpeg';
 import { FfprobeData } from 'fluent-ffmpeg';
 import * as fs from 'fs';
@@ -6,7 +6,8 @@ import * as path from 'path';
 import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid'
 
-
+const USE_SIGNED_URL = process.env.USE_SIGNED_URL === "true";
+const GCS_VIDEOS_STORAGE_URI = process.env.GCS_VIDEOS_STORAGE_URI || '';
 
 const MOOD_MUSIC: { [key: string]: string } = {
   'Angry': '[Angry] Drop and Roll - Silent Partner.mp3',
@@ -57,7 +58,7 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
   const outputFileNameWithAudio = `${id}_with_audio.mp4`;
   const outputFileNameWithVoiceover = `${id}_with_voiceover.mp4`;
   let finalOutputPath;
-  // const storage = new Storage();
+  const storage = new Storage();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'video-concat-'));
   const concatenationList = path.join(tempDir, 'concat-list.txt');
 
@@ -66,23 +67,26 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
     console.log(`Download all videos`);
     console.log(gcsVideoUris);
     const localPaths = await Promise.all(
-      gcsVideoUris.map(async (signedUri) => {
-        // const uri = signedUrlToGcsUri(signedUri);
-        // const match = uri.match(/gs:\/\/([^\/]+)\/(.+)/);
-        // if (!match) {
-        //   throw new Error(`Invalid GCS URI format: ${uri}`);
-        // }
+      gcsVideoUris.map(async (signedUri, index) => {
+        let localPath: string;
+        if (USE_SIGNED_URL) {
+          const uri = signedUrlToGcsUri(signedUri);
+          const match = uri.match(/gs:\/\/([^\/]+)\/(.+)/);
+          if (!match) {
+            throw new Error(`Invalid GCS URI format: ${uri}`);
+          }
 
-        // const [, bucket, filePath] = match;
-        const publicDir = path.join(process.cwd(), 'public');
-        const localPath = path.join(publicDir, signedUri);
-        // const localPath = path.join(tempDir, `video-${index}${path.extname(filePath)}`);
+          const [, bucket, filePath] = match;
+          localPath = path.join(tempDir, `video-${index}${path.extname(filePath)}`);
 
-        // await storage
-        //   .bucket(bucket)
-        //   .file(filePath)
-        //   .download({ destination: localPath });
-
+          await storage
+            .bucket(bucket)
+            .file(filePath)
+            .download({ destination: localPath });
+        } else {
+          const publicDir = path.join(process.cwd(), 'public');
+          localPath = path.join(publicDir, signedUri);
+        }
         return localPath;
       })
     );
@@ -135,25 +139,33 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
 
     const publicFile = path.join(publicDir, outputFileNameWithVoiceover);
     fs.copyFileSync(finalOutputPath, publicFile);
-    const url = outputFileNameWithVoiceover;
-    // // Upload result to GCS
-    // console.log(`Upload result to GCS`);
-    // const bucket = storage.bucket('svc-demo-vertex-us');
-    // await bucket
-    //   .upload(finalOutputPath, {
-    //     destination: outputFileName,
-    //     metadata: {
-    //       contentType: 'video/mp4',
-    //     },
-    //   });
-    // const file = bucket.file(outputFileName);
-    // // Generate a signed URL (as explained in the previous response)
-    // const options: GetSignedUrlConfig = {
-    //   version: 'v4',
-    //   action: 'read', // Change this to the desired action
-    //   expires: Date.now() + 60 * 60 * 1000, // 1 hour expiration
-    // };
-    // const [url] = await file.getSignedUrl(options);
+    let url: string;
+    if (USE_SIGNED_URL) {
+      // // Upload result to GCS
+      console.log(`Upload result to GCS`);
+      const bucketName = GCS_VIDEOS_STORAGE_URI.replace("gs://", "").split("/")[0];
+      // Extract the destination path from the GCS URI, and combine with the outputFileName
+      const destinationPath = path.join(GCS_VIDEOS_STORAGE_URI.replace(`gs://${bucketName}/`, ''), outputFileName);
+      const bucket = storage.bucket(bucketName);
+      
+      await bucket
+        .upload(finalOutputPath, {
+          destination: outputFileName,
+          metadata: {
+            contentType: 'video/mp4',
+          },
+        });
+      const file = bucket.file(outputFileName);
+      // Generate a signed URL (as explained in the previous response)
+      const options: GetSignedUrlConfig = {
+        version: 'v4',
+        action: 'read', // Change this to the desired action
+        expires: Date.now() + 60 * 60 * 1000, // 1 hour expiration
+      };
+      [url] = await file.getSignedUrl(options);
+    } else {
+      url = outputFileNameWithVoiceover;
+    }
     console.log('url:', url);
     return url;
   } finally {

@@ -39,7 +39,7 @@ export async function POST(req: Request): Promise<Response> {
         const generateVideoResponse = await waitForOperation(operationName);
         console.log(`Video generation completed for scene ${index + 1}`);
         
-        const gcsUri = generateVideoResponse.response.generatedSamples[0].video.uri;
+        const gcsUri = generateVideoResponse.response.videos[0].gcsUri;
         const [bucketName, ...pathSegments] = gcsUri.replace("gs://", "").split("/");
         const fileName = pathSegments.join("/");
         
@@ -65,7 +65,8 @@ export async function POST(req: Request): Promise<Response> {
           await storage.bucket(bucketName).file(fileName).download({ destination: videoFile });
           url = fileName;
         }
-        return fileName;
+        console.log('Video Genrated!', url)
+        return url;
       });
 
     const videoUrls = await Promise.all(videoGenerationTasks);

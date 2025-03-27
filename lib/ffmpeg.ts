@@ -150,12 +150,12 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
       
       await bucket
         .upload(finalOutputPath, {
-          destination: outputFileName,
+          destination: destinationPath,
           metadata: {
             contentType: 'video/mp4',
           },
         });
-      const file = bucket.file(outputFileName);
+      const file = bucket.file(destinationPath);
       // Generate a signed URL (as explained in the previous response)
       const options: GetSignedUrlConfig = {
         version: 'v4',

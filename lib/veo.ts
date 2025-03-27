@@ -10,11 +10,9 @@ interface GenerateVideoResponse {
   done: boolean;
   response: {
     '@type': 'type.googleapis.com/cloud.ai.large_models.vision.GenerateVideoResponse';
-    generatedSamples: Array<{
-      video: {
-        uri: string;
-        encoding: string;
-      };
+    videos: Array<{
+      gcsUri: string;
+      mimeType: string;
     }>;
   };
   error?: { // Add an optional error field to handle operation errors

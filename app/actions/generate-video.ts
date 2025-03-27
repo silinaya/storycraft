@@ -56,7 +56,7 @@ export async function generateVideos(scenes: Array<{
         const generateVideoResponse = await waitForOperation(operationName);
         console.log(`Video generation completed for scene ${index + 1}`);
         
-        const gcsUri = generateVideoResponse.response.generatedSamples[0].video.uri;
+        const gcsUri = generateVideoResponse.response.videos[0].gcsUri;
         const [bucketName, ...pathSegments] = gcsUri.replace("gs://", "").split("/");
         const fileName = pathSegments.join("/");
         

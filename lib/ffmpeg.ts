@@ -50,13 +50,15 @@ export function signedUrlToGcsUri(signedUrl: string): string {
   }
 }
 
-export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles: string[], withVoiceOver: boolean, mood: string): Promise<string> {
+export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles: string[], withVoiceOver: boolean, mood: string, logoOverlay?: string): Promise<string> {
   console.log(`Concatenate all videos`);
   console.log(mood);
+  console.log(`logoOverlay ${logoOverlay}`)
   const id = uuidv4();
   const outputFileName = `${id}.mp4`;
   const outputFileNameWithAudio = `${id}_with_audio.mp4`;
   const outputFileNameWithVoiceover = `${id}_with_voiceover.mp4`;
+  const outputFileNameWithOverlay = `${id}_with_overlay.mp4`;
   let finalOutputPath;
   const storage = new Storage();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'video-concat-'));
@@ -122,11 +124,17 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
     const audioFile = path.join(publicDir, MOOD_MUSIC[mood]);
     const outputPathWithAudio = path.join(tempDir, outputFileNameWithAudio);
     const outputPathWithVoiceover = path.join(tempDir, outputFileNameWithVoiceover);
+    const outputPathWithOverlay = path.join(tempDir, outputFileNameWithOverlay);
+
+
+    
 
     // Adding an audio file
     console.log(`Adding music`);
     await addAudioToVideoWithFadeOut(outputPath, audioFile, outputPathWithAudio)
     finalOutputPath = outputPathWithAudio;
+
+    
 
     console.log(withVoiceOver);
     if (withVoiceOver) {
@@ -135,6 +143,16 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
       await addVoiceover(outputPathWithAudio, speachAudioFiles, outputPathWithVoiceover)
       // await createVideoWithVoiceover(outputPathWithAudio, speachAudioFiles, outputPathWithVoiceover)
       finalOutputPath = outputPathWithVoiceover;
+    }
+
+    if (logoOverlay) {
+      // Add overlay
+      await addOverlayTopRight(
+        finalOutputPath,
+        path.join(publicDir, logoOverlay), 
+        outputPathWithOverlay,
+      )
+      finalOutputPath = outputPathWithOverlay;
     }
 
     const publicFile = path.join(publicDir, outputFileNameWithVoiceover);
@@ -230,6 +248,88 @@ async function addAudioToVideoWithFadeOut(
         })
         .run();
     });
+  });
+}
+
+async function addOverlayTopRight(
+  videoInputPath: string,
+  imageInputPath: string,
+  outputPath: string,
+  margin: number = 10,
+  overlayScale: number = 0.15 // Default to 15% of video width
+): Promise<void> {
+  console.log('Starting video processing...');
+  console.log(`  Input Video: ${videoInputPath}`);
+  console.log(`  Overlay Image: ${imageInputPath}`);
+  console.log(`  Output Video: ${outputPath}`);
+  console.log(`  Margin: ${margin}px`);
+  console.log(`  Overlay Scale: ${overlayScale * 100}% of video width`);
+  
+  return new Promise((resolve, reject) => {
+      // First, get the video dimensions
+      ffmpeg.ffprobe(videoInputPath, (err, metadata) => {
+          if (err) {
+              console.error('Error getting video metadata:', err);
+              return reject(err);
+          }
+          
+          // Get video dimensions
+          const videoStream = metadata.streams.find(stream => stream.codec_type === 'video');
+          if (!videoStream) {
+              return reject(new Error('No video stream found'));
+          }
+          
+          const videoWidth = videoStream.width;
+          const videoHeight = videoStream.height;
+          
+          if (!videoWidth || !videoHeight) {
+              return reject(new Error('Could not determine video dimensions'));
+          }
+          
+          // Calculate the overlay width based on the video width and scale factor
+          const overlayWidth = Math.round(videoWidth * overlayScale);
+          
+          console.log(`  Video dimensions: ${videoWidth}x${videoHeight}`);
+          console.log(`  Overlay width: ${overlayWidth}px (scaled)`);
+          
+          // Now run ffmpeg with the calculated dimensions
+          ffmpeg()
+              .input(videoInputPath)
+              .input(imageInputPath)
+              .complexFilter([
+                  // Scale the overlay image to the calculated width, preserving aspect ratio
+                  `[1:v]scale=${overlayWidth}:-1[scaled]`,
+                  
+                  // Apply the overlay in the top-right corner with margin
+                  `[0:v][scaled]overlay=W-w-${margin}:${margin}[outv]`
+              ], 'outv')
+              .outputOptions([
+                  '-c:v libx264',
+                  '-crf 23',
+                  '-preset veryfast',
+                  '-c:a copy',
+                  '-pix_fmt yuv420p'
+              ])
+              .on('progress', (progress) => {
+                  if (progress.percent) {
+                      console.log(`Processing: ${Math.floor(progress.percent)}% done`);
+                  } else if (progress.timemark) {
+                      console.log(`Processing: Time mark ${progress.timemark}`);
+                  }
+              })
+              .on('error', (err, stdout, stderr) => {
+                  console.error('Error processing video:', err.message);
+                  console.error('ffmpeg stdout:', stdout);
+                  console.error('ffmpeg stderr:', stderr);
+                  reject(err);
+              })
+              .on('end', (stdout, stderr) => {
+                  console.log(`Video processing finished successfully!`);
+                  console.log(`Output saved to: ${outputPath}`);
+                  resolve();
+              })
+              .save(outputPath);
+      });
   });
 }
 

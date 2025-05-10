@@ -12,6 +12,7 @@ interface Scene {
   videoPrompt: string;
   description: string;
   voiceover: string;
+  charactersPresent: string[];
   imageBase64?: string;
 }
 
@@ -122,6 +123,10 @@ export function SlideshowModal({ scenes, isOpen, onClose }: SlideshowModalProps)
           <h3 className="font-semibold">Voiceover:</h3>
           <p>{currentScene.voiceover}</p>
         </div>
+        <div className="mt-4 space-y-2">
+          <h3 className="font-semibold">Characters:</h3>
+          <p>{currentScene.charactersPresent.join(",")}</p>
+          </div>
       </DialogContent>
     </Dialog>
   )

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -12,11 +12,13 @@ import { generateScenes } from './actions/generate-scenes'
 import { regenerateImage } from './actions/regenerate-image'
 import { editVideo } from './actions/generate-video'
 import { resizeImage } from './actions/resize-image'
-import { Loader2, FileSlidersIcon as Slideshow, Video } from 'lucide-react'
+import { saveImageToPublic } from './actions/upload-image'
+import { Loader2, FileSlidersIcon as Slideshow, Video, Upload, DnaIcon } from 'lucide-react'
 import { ScenarioModal } from './components/scenario-modal'
 import { StyleSelector, type Style } from "./components/style-selector"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from '@/components/ui/checkbox'
+import Image from 'next/image'
 
 const styles: Style[] = [
   { name: "Live-Action", image: "https://images.unsplash.com/photo-1585951237318-9ea5e175b891?w=500&h=500&fit=crop" },
@@ -32,6 +34,7 @@ interface Scenario {
   mood: string;
   characters: Array<{name:string, description: string}>;
   settings: Array<{name:string, description: string}>;
+  logoOverlay?: string;
 }
 
 interface Scene {
@@ -46,6 +49,8 @@ interface Scene {
 export default function Home() {
   const [pitch, setPitch] = useState('')
   const [style, setStyle] = useState('Live-Action')
+  const [logoOverlay, setLogoOverlay] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false);
   const [numScenes, setNumScenes] = useState(8)
   const [isLoading, setIsLoading] = useState(false)
   const [withVoiceOver, setWithVoiceOver] = useState(false)
@@ -58,8 +63,9 @@ export default function Home() {
   const [isScenarioOpen, setScenarioOpen] = useState(false)
   const [videoUri, setVideoUri] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>("storyboard")
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
-  const FALLBACK_URL = "https://videos.pexels.com/video-files/3042473/3042473-sd_426_240_30fps.mp4"
+  const FALLBACK_URL = "https://videos.pexels.com/video-files/4276282/4276282-hd_1920_1080_25fps.mp4"
   
   useEffect(() => {
       console.log("generatingScenes (in useEffect):", generatingScenes);
@@ -72,6 +78,9 @@ export default function Home() {
     try {
       const scenario = await generateScenes(pitch, numScenes, style)
       setScenario(scenario)
+      if (logoOverlay) {
+        scenario.logoOverlay = logoOverlay
+      }
       setScenes(scenario.scenes)
     } catch (error) {
       console.error('Error generating scenes:', error)
@@ -148,6 +157,7 @@ export default function Home() {
               ),
               scenario.mood,
               withVoiceOver,
+              scenario.logoOverlay
             );
             if (result.success) {
                 setVideoUri(result.videoUrl)
@@ -266,6 +276,47 @@ export default function Home() {
       setErrorMessage(error instanceof Error ? error.message : "An unknown error occurred while uploading the image")
     }
   }
+
+  const handleLogoRemove = () => {
+    setLogoOverlay(null)
+  }
+
+  const handleLogoClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setIsUploading(true);
+    
+    try {
+      // Convert file to base64 string
+      const base64String = await fileToBase64(file);
+      
+      // Call server action to save the image
+      const imagePath = await saveImageToPublic(base64String, file.name);
+      
+      // Update state with the path to the saved image
+      console.log(imagePath)
+      setLogoOverlay(imagePath);
+    } catch (error) {
+      console.error("Error uploading logo:", error);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+  
+  // Utility function to convert file to base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
   
   console.log("Component rendered");
 
@@ -314,6 +365,50 @@ export default function Home() {
                 onChange={(e) => setStyle(e.target.value)}
                 className="w-200"
               />
+            </div>
+            <div className="flex items-center space-x-2">
+            <label htmlFor="style" className="text-sm font-medium">
+                Logo Overlay:
+              </label>
+              {logoOverlay ? (
+                <div className="relative mx-auto w-full max-w-[100px] aspect-video overflow-hidden group">
+                  <Image
+                    src={logoOverlay || "/placeholder.svg"} 
+                    alt={`Logo Overlay`}
+                    className="w-full h-full object-contain rounded-t-lg"
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.src = "/placeholder.svg";
+                      target.onerror = null; // Prevent infinite loop
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleLogoRemove}
+                      className="bg-gray-800 text-white border-gray-600 hover:bg-gray-700"
+                    >
+                      Remove Image
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full h-full flex flex-col">
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="bg-black/50 hover:bg-green-500 hover:text-white"
+                    onClick={handleLogoClick}
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span className="sr-only">Upload image</span>
+                  </Button>
+                  <input type="file" ref={fileInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
+                </div>
+              )}
             </div>
             <Button 
               onClick={handleGenerate} 

@@ -15,6 +15,7 @@ interface EditSceneModalProps {
     videoPrompt: string;
     description: string;
     voiceover: string;
+    charactersPresent: string[];
     imageBase64?: string;
     videoUri?: string | Promise<string>;
   };
@@ -137,6 +138,12 @@ export function EditSceneModal({ isOpen, onClose, scene, sceneNumber, onUpdate }
               placeholder="What should the narrator say?"
               rows={3}
             />
+          </div>
+          <div className="grid gap-2">
+            <label htmlFor="characters" className="text-sm font-medium">
+              Characters
+            </label>
+            {editedScene.charactersPresent.join(",")}
           </div>
         </div>
         <div className="flex justify-end space-x-2">

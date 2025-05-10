@@ -2,7 +2,7 @@
 
 import { generateText/*, experimental_generateImage as generateImage*/ } from 'ai'
 import { createVertex } from '@ai-sdk/google-vertex'
-import { generateImageRest } from '@/lib/imagen';
+import { generateImageCustomizationRest, generateImageRest } from '@/lib/imagen';
 
 const vertex = createVertex({
   project: process.env.PROJECT_ID,
@@ -13,9 +13,10 @@ interface Scenario {
     scenario: string;
     genre: string;
     mood: string;
-    characters: Array<{name:string, description: string}>;
+    characters: Array<{name:string, description: string, imageBase64?: string}>;
     settings: Array<{name:string, description: string}>;
     scenes: Scene[];
+    logoOverlay?: string;
 }
 
 interface Scene {
@@ -23,9 +24,10 @@ interface Scene {
   videoPrompt: string;
   description: string;
   voiceover: string;
+  charactersPresent: string[];
   imageUrl?: string;
   imageBase64?: string;
-  videoUri?: string
+  videoUri?: string;
 }
 
 export async function generateScenes(pitch: string, numScenes: number, style: string) {
@@ -109,6 +111,7 @@ Here's an example of how your output should be structured:
   "videoPrompt": [A video prompt, focusing on the movement of the characters, objects, in the scene],
   "description": [A scene description explaining what happens],
   "voiceover": [A short, narrator voiceover text. One full sentence, 6s max.]
+  "charactersPresent": [An array list of names of characters visually present in the scene]
  },
  [...]
  }
@@ -119,7 +122,7 @@ Remember, your goal is to create a compelling and visually interesting story tha
 
     console.log('Create a storyboard')
     const { text } = await generateText({
-      model: vertex("gemini-2.0-flash-exp"),
+      model: vertex("gemini-2.0-flash-001"),
       prompt,
       temperature: 1
     })
@@ -147,13 +150,32 @@ Remember, your goal is to create a compelling and visually interesting story tha
       throw new Error('Invalid scene data structure: expected an array')
     }
 
+    const charactersWithImages = await Promise.all(scenario.characters.map(async (character, index) => {
+      try {
+        console.log(`Generating image for scene ${index + 1}`);
+        const resultJson = await generateImageRest(`${style}: ${character.description}`, "1:1");
+        if (resultJson.predictions[0].raiFilteredReason) {
+            throw new Error(resultJson.predictions[0].raiFilteredReason)
+        } else {
+            console.log('Generated image base64:', resultJson.predictions[0].bytesBase64Encoded.substring(0, 50) + '...');
+            return { ...character, imageBase64: resultJson.predictions[0].bytesBase64Encoded };
+        }
+      } catch (error) {
+        console.error('Error generating image:', error);
+        return { ...character, imageBase64: '' };
+      }
+    }))
+
+    scenario.characters = charactersWithImages
+
     // If we have fewer scenes than requested, add placeholder scenes
     while (scenes.length < numScenes) {
       scenes.push({
         imagePrompt: "A blank canvas waiting to be filled with imagination",
         videoPrompt: "Describe what is happening in the video",
         description: "This scene is yet to be created. Let your imagination run wild!",
-        voiceover: "What happens next? The story is yours to continue..."
+        voiceover: "What happens next? The story is yours to continue...",
+        charactersPresent: [],
       })
     }
 
@@ -172,7 +194,22 @@ Remember, your goal is to create a compelling and visually interesting story tha
         //   aspectRatio: '16:9'
         // });
         console.log(`Generating image for scene ${index + 1}`);
-        const resultJson = await generateImageRest(scene.imagePrompt);
+        let resultJson;
+        if (false && scene.charactersPresent.length > 0) {
+          const presentCharacters = charactersWithImages.filter(character =>
+            scene.charactersPresent.includes(character.name)
+          );
+
+          if (presentCharacters.length > 0) {
+             console.log(`Using character customization for characters: ${presentCharacters.map(c => c.name).join(', ')}`);
+             resultJson = await generateImageCustomizationRest(scene.imagePrompt, presentCharacters);
+          } else {
+             console.warn(`Scene ${index + 1} listed characters [${scene.charactersPresent.join(', ')}] but no matching data found in charactersWithImages. Falling back to standard generation.`);
+             resultJson = await generateImageRest(scene.imagePrompt);
+          }
+        } else {
+          resultJson = await generateImageRest(scene.imagePrompt);
+        }
         if (resultJson.predictions[0].raiFilteredReason) {
             throw new Error(resultJson.predictions[0].raiFilteredReason)
         } else {

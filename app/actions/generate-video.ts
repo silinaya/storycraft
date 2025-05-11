@@ -4,24 +4,32 @@ import { Storage, GetSignedUrlConfig } from '@google-cloud/storage';
 import { tts } from '@/lib/tts';
 import { generateSceneVideo, waitForOperation } from '@/lib/veo';
 import { concatenateVideos } from '@/lib/ffmpeg';
+import { type Language } from '../types';
 
-
-export async function editVideo(scenes: Array<{
+export async function editVideo(
+  scenes: Array<{
     voiceover: string;
     videoUri?: string | Promise<string>;
-  }>, mood: string, withVoiceOver: boolean, logoOverlay?: string): Promise<{ success: true, videoUrl: string } | { success: false, error: string }> {
+  }>, 
+  mood: string, 
+  withVoiceOver: boolean, 
+  language: Language,
+  logoOverlay?: string
+): Promise<{ success: true, videoUrl: string } | { success: false, error: string }> {
     
   try {
     console.log('Generating video...');
-    console.log(withVoiceOver)
+    console.log('Language:', language.name);
+    console.log('With voiceover:', withVoiceOver);
+    
     const filteredGcsVideoUris = scenes.map((scene) => scene.videoUri).filter((s): s is string => s !== undefined);
     const speachAudioFiles = await Promise.all(scenes.map(async (scene, index) => {
         try {
-          console.log(`Generating tts for scene ${index + 1}`);
-          const filename = await tts(scene.voiceover);
+          console.log(`Generating tts for scene ${index + 1} in ${language.name}`);
+          const filename = await tts(scene.voiceover, language.code, 'Algenib');
           return filename;
         } catch (error) {
-          console.error(`Error generating image for scene ${index + 1}:`, error);
+          console.error(`Error generating tts for scene ${index + 1}:`, error);
         }
       }));
     const filteredSpeachAudioFiles = speachAudioFiles.filter((s): s is string => s !== undefined);

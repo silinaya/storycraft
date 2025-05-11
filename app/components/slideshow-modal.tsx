@@ -6,15 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
-
-interface Scene {
-  imagePrompt: string;
-  videoPrompt: string;
-  description: string;
-  voiceover: string;
-  charactersPresent: string[];
-  imageBase64?: string;
-}
+import { Scene } from "../types"
 
 interface SlideshowModalProps {
   scenes: Scene[];

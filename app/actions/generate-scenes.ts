@@ -4,33 +4,14 @@ import { generateText/*, experimental_generateImage as generateImage*/ } from 'a
 import { createVertex } from '@ai-sdk/google-vertex'
 import { generateImageCustomizationRest, generateImageRest } from '@/lib/imagen';
 
+import { Scene, Scenario, Language } from "../types"
+
 const vertex = createVertex({
   project: process.env.PROJECT_ID,
   location: process.env.LOCATION,
 })
 
-interface Scenario {
-    scenario: string;
-    genre: string;
-    mood: string;
-    characters: Array<{name:string, description: string, imageBase64?: string}>;
-    settings: Array<{name:string, description: string}>;
-    scenes: Scene[];
-    logoOverlay?: string;
-}
-
-interface Scene {
-  imagePrompt: string;
-  videoPrompt: string;
-  description: string;
-  voiceover: string;
-  charactersPresent: string[];
-  imageUrl?: string;
-  imageBase64?: string;
-  videoUri?: string;
-}
-
-export async function generateScenes(pitch: string, numScenes: number, style: string) {
+export async function generateScenes(pitch: string, numScenes: number, style: string, language: Language) {
   try {
     const prompt = `
       You are tasked with generating a creative scenario for a short movie and creating prompts for storyboard illustrations. Follow these instructions carefully:
@@ -40,7 +21,7 @@ export async function generateScenes(pitch: string, numScenes: number, style: st
 ${pitch}
 </pitch>
 
-2. Generate a scenario for an ad movie based on the story pitch. Stick as close as possible to the pitch. Do not include children in your scenario.
+2. Generate a scenario in ${language.name} for an ad movie based on the story pitch. Stick as close as possible to the pitch. Do not include children in your scenario.
 
 3. What Music Genre will best fit this video, pick from: 
 - Alternative & Punk
@@ -70,19 +51,21 @@ ${pitch}
 - Romantic
 - Sad
 
-5. After creating the scenario, generate ${numScenes} creative scenes to create a storyboard illustrating the scenario. Follow these guidelines for the scenes:
+5. Generate a short description of the music that will be used in the video.
+
+6. After creating the scenario, generate ${numScenes} creative scenes to create a storyboard illustrating the scenario. Follow these guidelines for the scenes:
  a. For each scene, provide:
  1. A detailed visual description for AI image generation (imagePrompt), the style should be ${style}. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your image prompts.  Always use indefinite articles when describing character(s). No children.
  2. A video prompt, focusing on the movement of the characters, objects, in the scene. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your image prompts.  Always use indefinite articles when describing character(s). No children.
- 3. A scene description explaining what happens (description). You can use the character(s) name(s) in your descriptions.
- 4. A short, narrator voiceover text. One full sentence, 6s max. (voiceover). You can use the character(s) name(s) in your vocieovers.
+ 3. A scene description  in ${language.name} explaining what happens (description). You can use the character(s) name(s) in your descriptions.
+ 4. A short, narrator voiceover text in ${language.name}. One full sentence, 6s max. (voiceover). You can use the character(s) name(s) in your vocieovers. 
 a. Each image prompt should describe a key scene or moment from your scenario.
 b. Ensure that the image prompts, when viewed in sequence, tell a coherent story.
 c. Include descriptions of characters, settings, and actions that are consistent across all image prompts.
 d. Make each image prompt vivid and detailed enough to guide the creation of a storyboard illustration.
 
-6. Format your output as follows:
-- First, provide a brief description of your scenario.
+7. Format your output as follows:
+- First, provide a detailed description of your scenario in ${language.name}.
 - Then from this scenario provide a short description of each character in the story inside the characters key.
 - Then from this scenario provide a short description of each setting in the story inside the settings key.
 - Then, list the ${numScenes} scenes
@@ -95,6 +78,11 @@ Here's an example of how your output should be structured:
  "scenario": "[Brief description of your creative scenario based on the given story pitch]",
  "genre": [Music genre],
  "mood": [Mood],
+ "music": [Short description of the music that will be used in the video],
+ "language": {
+   "name": "${language.name}",
+   "code": "${language.code}"
+ },
  "characters": [
   {"name": [character 1 name], "description": [character 1 description]},
   {"name": [character 2 name], "description": [character 2 description]},
@@ -110,7 +98,7 @@ Here's an example of how your output should be structured:
   "imagePrompt": [A detailed visual description for AI image generation, the style should always be cinematic and photorealistic],
   "videoPrompt": [A video prompt, focusing on the movement of the characters, objects, in the scene],
   "description": [A scene description explaining what happens],
-  "voiceover": [A short, narrator voiceover text. One full sentence, 6s max.]
+  "voiceover": [A short, narrator voiceover text. One full sentence, 6s max.],
   "charactersPresent": [An array list of names of characters visually present in the scene]
  },
  [...]
@@ -127,6 +115,8 @@ Remember, your goal is to create a compelling and visually interesting story tha
       temperature: 1
     })
 
+    console.log('text', text)
+
     if (!text) {
       throw new Error('No text generated from the AI model')
     }
@@ -135,7 +125,17 @@ Remember, your goal is to create a compelling and visually interesting story tha
     let scenes: Scene[]
     try {
       const cleanedText = text.replace(/\`\`\`json|\`\`\`/g, '').trim();
-      scenario = JSON.parse(cleanedText);
+      const parsedScenario = JSON.parse(cleanedText);
+      
+      // Ensure the language is set correctly
+      scenario = {
+        ...parsedScenario,
+        language: {
+          name: language.name,
+          code: language.code
+        }
+      };
+      
       console.log(scenario.scenario)
       console.log(scenario.characters)
       console.log(scenario.settings)

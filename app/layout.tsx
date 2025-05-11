@@ -1,7 +1,15 @@
-import { Inter } from 'next/font/google'
+import { DM_Sans } from 'next/font/google'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+const dmSans = DM_Sans({ 
+  subsets: ['latin'],
+  display: 'swap',
+})
+
+export const metadata = {
+  title: 'StoryCraft',
+  description: 'AI-powered storyboard generation',
+}
 
 export default function RootLayout({
   children,
@@ -9,8 +17,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} bg-background min-h-screen`}>{children}</body>
+    <html lang="en" className={dmSans.className}>
+      <body>{children}</body>
     </html>
   )
 }

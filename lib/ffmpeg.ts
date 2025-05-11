@@ -127,29 +127,26 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
     const outputPathWithOverlay = path.join(tempDir, outputFileNameWithOverlay);
 
 
-    
+    // Mix Voiceover and Music
+    let musicAudioFile = audioFile;
+    if (withVoiceOver) {
+      await mixAudioWithVoiceovers(speachAudioFiles, audioFile, outputPathWithVoiceover);
+      musicAudioFile = outputPathWithVoiceover;
+    }
+
+
+
 
     // Adding an audio file
     console.log(`Adding music`);
-    await addAudioToVideoWithFadeOut(outputPath, audioFile, outputPathWithAudio)
+    await addAudioToVideoWithFadeOut(outputPath, musicAudioFile, outputPathWithAudio)
     finalOutputPath = outputPathWithAudio;
-
-    
-
-    console.log(withVoiceOver);
-    if (withVoiceOver) {
-      console.log(`Adding voiceover`);
-      console.log(speachAudioFiles.length);
-      await addVoiceover(outputPathWithAudio, speachAudioFiles, outputPathWithVoiceover)
-      // await createVideoWithVoiceover(outputPathWithAudio, speachAudioFiles, outputPathWithVoiceover)
-      finalOutputPath = outputPathWithVoiceover;
-    }
 
     if (logoOverlay) {
       // Add overlay
       await addOverlayTopRight(
         finalOutputPath,
-        path.join(publicDir, logoOverlay), 
+        path.join(publicDir, logoOverlay),
         outputPathWithOverlay,
       )
       finalOutputPath = outputPathWithOverlay;
@@ -165,7 +162,7 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
       // Extract the destination path from the GCS URI, and combine with the outputFileName
       const destinationPath = path.join(GCS_VIDEOS_STORAGE_URI.replace(`gs://${bucketName}/`, ''), outputFileName);
       const bucket = storage.bucket(bucketName);
-      
+
       await bucket
         .upload(finalOutputPath, {
           destination: destinationPath,
@@ -264,250 +261,239 @@ async function addOverlayTopRight(
   console.log(`  Output Video: ${outputPath}`);
   console.log(`  Margin: ${margin}px`);
   console.log(`  Overlay Scale: ${overlayScale * 100}% of video width`);
-  
+
   return new Promise((resolve, reject) => {
-      // First, get the video dimensions
-      ffmpeg.ffprobe(videoInputPath, (err, metadata) => {
-          if (err) {
-              console.error('Error getting video metadata:', err);
-              return reject(err);
+    // First, get the video dimensions
+    ffmpeg.ffprobe(videoInputPath, (err, metadata) => {
+      if (err) {
+        console.error('Error getting video metadata:', err);
+        return reject(err);
+      }
+
+      // Get video dimensions
+      const videoStream = metadata.streams.find(stream => stream.codec_type === 'video');
+      if (!videoStream) {
+        return reject(new Error('No video stream found'));
+      }
+
+      const videoWidth = videoStream.width;
+      const videoHeight = videoStream.height;
+
+      if (!videoWidth || !videoHeight) {
+        return reject(new Error('Could not determine video dimensions'));
+      }
+
+      // Calculate the overlay width based on the video width and scale factor
+      const overlayWidth = Math.round(videoWidth * overlayScale);
+
+      console.log(`  Video dimensions: ${videoWidth}x${videoHeight}`);
+      console.log(`  Overlay width: ${overlayWidth}px (scaled)`);
+
+      // Now run ffmpeg with the calculated dimensions
+      ffmpeg()
+        .input(videoInputPath)
+        .input(imageInputPath)
+        .complexFilter([
+          // Scale the overlay image to the calculated width, preserving aspect ratio
+          `[1:v]scale=${overlayWidth}:-1[scaled]`,
+
+          // Apply the overlay in the top-right corner with margin
+          `[0:v][scaled]overlay=W-w-${margin}:${margin}[outv]`
+        ], 'outv')
+        .outputOptions([
+          '-c:v libx264',
+          '-crf 23',
+          '-preset veryfast',
+          '-c:a copy',
+          '-pix_fmt yuv420p'
+        ])
+        .on('progress', (progress) => {
+          if (progress.percent) {
+            console.log(`Processing: ${Math.floor(progress.percent)}% done`);
+          } else if (progress.timemark) {
+            console.log(`Processing: Time mark ${progress.timemark}`);
           }
-          
-          // Get video dimensions
-          const videoStream = metadata.streams.find(stream => stream.codec_type === 'video');
-          if (!videoStream) {
-              return reject(new Error('No video stream found'));
-          }
-          
-          const videoWidth = videoStream.width;
-          const videoHeight = videoStream.height;
-          
-          if (!videoWidth || !videoHeight) {
-              return reject(new Error('Could not determine video dimensions'));
-          }
-          
-          // Calculate the overlay width based on the video width and scale factor
-          const overlayWidth = Math.round(videoWidth * overlayScale);
-          
-          console.log(`  Video dimensions: ${videoWidth}x${videoHeight}`);
-          console.log(`  Overlay width: ${overlayWidth}px (scaled)`);
-          
-          // Now run ffmpeg with the calculated dimensions
-          ffmpeg()
-              .input(videoInputPath)
-              .input(imageInputPath)
-              .complexFilter([
-                  // Scale the overlay image to the calculated width, preserving aspect ratio
-                  `[1:v]scale=${overlayWidth}:-1[scaled]`,
-                  
-                  // Apply the overlay in the top-right corner with margin
-                  `[0:v][scaled]overlay=W-w-${margin}:${margin}[outv]`
-              ], 'outv')
-              .outputOptions([
-                  '-c:v libx264',
-                  '-crf 23',
-                  '-preset veryfast',
-                  '-c:a copy',
-                  '-pix_fmt yuv420p'
-              ])
-              .on('progress', (progress) => {
-                  if (progress.percent) {
-                      console.log(`Processing: ${Math.floor(progress.percent)}% done`);
-                  } else if (progress.timemark) {
-                      console.log(`Processing: Time mark ${progress.timemark}`);
-                  }
-              })
-              .on('error', (err, stdout, stderr) => {
-                  console.error('Error processing video:', err.message);
-                  console.error('ffmpeg stdout:', stdout);
-                  console.error('ffmpeg stderr:', stderr);
-                  reject(err);
-              })
-              .on('end', (stdout, stderr) => {
-                  console.log(`Video processing finished successfully!`);
-                  console.log(`Output saved to: ${outputPath}`);
-                  resolve();
-              })
-              .save(outputPath);
-      });
+        })
+        .on('error', (err, stdout, stderr) => {
+          console.error('Error processing video:', err.message);
+          console.error('ffmpeg stdout:', stdout);
+          console.error('ffmpeg stderr:', stderr);
+          reject(err);
+        })
+        .on('end', (stdout, stderr) => {
+          console.log(`Video processing finished successfully!`);
+          console.log(`Output saved to: ${outputPath}`);
+          resolve();
+        })
+        .save(outputPath);
+    });
   });
 }
 
-// async function createVideoWithVoiceover(
-//   videoPath: string,
-//   voiceoverSegments: string[],
-//   outputPath: string
-// ): Promise<void> {
-//   console.log('createVideoWithVoiceover!!!');
-//   return new Promise<void>((resolve, reject) => {
-
-
-//     // Check directory exists and is writable
-//     try {
-//       fs.accessSync(path.dirname(outputPath), fs.constants.W_OK);
-//     } catch (err) {
-//       console.error('Directory not writable:', err);
-//     }
-
-
-//     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'music-concat-'));
-//     const combinedVoiceoverPath = path.join(tmpDir, 'combined_voiceover.mp3');
-
-//     // 1. Concatenate voiceover segments (same as before)
-//     const voiceoverListPath = path.join(tmpDir, 'voiceover_list.txt');
-//     const voiceoverList = voiceoverSegments.map((segment, index) => {
-//       const startTime = index * 8;
-//       return `file '${segment}'\noutpoint ${startTime}`;
-//     }).join('\n');
-//     fs.writeFileSync(voiceoverListPath, voiceoverList);
-
-//     ffmpeg()
-//       .input(voiceoverListPath)
-//       .inputOptions(['-safe', '0', '-f', 'concat']) 
-//       .output(combinedVoiceoverPath)
-//       .on('start', (commandLine) => {
-//         console.log('FFmpeg command:', commandLine);
-//       })
-//       .on('end', () => {
-
-//         // 2. Get video duration (needed for amix filter)
-//         ffmpeg.ffprobe(videoPath, (err, metadata) => {
-//           if (err) {
-//             cleanup(tmpDir, voiceoverListPath);
-//             return reject(err);
-//           }
-//           const videoDuration = metadata.format.duration || 0;
-
-
-//           // 3. Mix with dynamic volume using amix and volume expression
-//           ffmpeg(videoPath)
-//             .input(combinedVoiceoverPath)
-//             .complexFilter([
-//               {
-//                 filter: 'amix',
-//                 options: {
-//                   inputs: 2,
-//                   duration: 'first',
-//                   weights: `if(gte(t,T${voiceoverSegments.length-1}*8),1,0.6) 1`, // Dynamic weight for video audio
-//                 },
-//                 outputs: 'mixed'
-//               }
-//             ])
-
-//             .map('0:v') // Video from original input
-//             .map('[mixed]') // Audio from mixed output
-//             .audioCodec('aac')
-//             .videoCodec('copy')
-//             .output(outputPath)
-//             .outputOptions('-y')  // Force overwrite
-//             .outputOptions('-shortest') // Ensure output duration matches the shortest input
-//             .on('start', (commandLine) => {
-//               console.log('FFmpeg command:', commandLine);
-//             })
-//             .on('end', () => {
-//               cleanup(tmpDir, voiceoverListPath, combinedVoiceoverPath);
-//               resolve();
-//             })
-//             .on('error', (err) => {
-//               cleanup(tmpDir, voiceoverListPath, combinedVoiceoverPath);
-//               reject(err);
-//             })
-//             .run();
-//         });
-//       })
-//       .on('error', (err) => {
-//         cleanup(tmpDir, voiceoverListPath);
-//         reject(err);
-//       })
-//       .run();
-
-//     function cleanup(tmpDir: string, voiceoverListPath?: string, combinedVoiceoverPath?: string) {
-//       if (voiceoverListPath) fs.unlinkSync(voiceoverListPath);
-//       if (combinedVoiceoverPath) fs.unlinkSync(combinedVoiceoverPath);
-//       fs.rmSync(tmpDir, { recursive: true });
-//     }
-//   });
-// }
-
-async function addVoiceover(
-  videoPath: string,
-  speechAudioFiles: string[],
-  outputPath: string
-): Promise<void> {
-  return new Promise<void>(async (resolve, reject) => {
-    try {
-      // 1. Get the duration of the video
-      const videoMetadata: FfprobeData = await new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(videoPath, (err, metadata) => {
-          if (err) reject(err);
-          else resolve(metadata);
-        });
-      });
-      const videoDuration = videoMetadata.format.duration;
-
-      if (videoDuration === undefined) {
-        console.error("Error: Video duration is undefined!");
-        reject("Video duration is undefined");
-        return;
+function getAudioDuration(filePath: string): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
+    ffmpeg.ffprobe(filePath, (err, metadata) => {
+      if (err) {
+        return reject(new Error(`ffprobe error for ${filePath}: ${err.message}`));
       }
+      if (metadata && metadata.format && typeof metadata.format.duration === 'number') {
+        resolve(metadata.format.duration);
+      } else {
+        reject(new Error(`Could not get duration for ${filePath}`));
+      }
+    });
+  });
+}
 
-      const delaySeconds = 8;
-      const command = ffmpeg(videoPath);
+export async function mixAudioWithVoiceovers(
+  speechAudioFiles: string[],
+  musicAudioFile: string,
+  outputAudioPath: string,
+  musicVolumeDuringVoiceover: number = 0.7,
+  voiceoverIntervalSeconds: number = 8
+): Promise<void> {
+  if (!musicAudioFile) {
+    throw new Error("Music audio file path (musicAudioFile) is required.");
+  }
+  if (!outputAudioPath) {
+    throw new Error("Output audio file path (outputAudioPath) is required.");
+  }
 
-      // Add voiceover files as inputs
-      speechAudioFiles.forEach((file) => {
-        command.input(file);
-      });
-
-      // Build the complex filter string
-      let filter = '';
-      const mixInputs: string[] = [];
-      const weights: number[] = [];
-
-      // Set the weight for the music (first input)
-      weights.push(0.6);
-
-      speechAudioFiles.forEach((_, index) => {
-        const delayMs = index * delaySeconds * 1000;
-        const streamLabel = `a${index + 1}`;
-
-        // Add adelay filter for each voiceover
-        filter += `[${index + 1}:a]adelay=${delayMs}|${delayMs}[${streamLabel}];`;
-        mixInputs.push(`[${streamLabel}]`);
-
-        // Set the weight for each voiceover (assuming you want them at full volume)
-        weights.push(1);
-      });
-
-      // Use the 'weights' option in the amix filter
-      filter += `[0:a]${mixInputs.join('')}amix=inputs=${speechAudioFiles.length + 1
-        }:duration=first:weights=${weights.join(' ')}[outa]`;
-
-      command
-        .complexFilter(filter)
-        .outputOptions(['-map 0:v', '-map [outa]'])
-        .output(outputPath)
-        .audioCodec('aac')
-        .videoCodec('copy') // Copy video stream without re-encoding
-        .outputOptions('-shortest') // Ensure output duration matches the shortest input
-        .on('start', (commandLine) => {
-          console.log('FFmpeg command:', commandLine);
-        })
-        .on('progress', (progress) => {
-          console.log('Processing: ' + progress.percent + '% done');
+  // Handle case with no voiceovers: just copy the music file
+  if (!speechAudioFiles || speechAudioFiles.length === 0) {
+    console.warn("No speech audio files provided. Copying music file as output.");
+    return new Promise<void>((resolve, reject) => {
+      ffmpeg(musicAudioFile)
+        .outputOptions('-c:a copy') // Copy codec without re-encoding
+        .on('error', (err: Error) => {
+          const errorMessage = `Error copying music file ${musicAudioFile} to ${outputAudioPath}: ${err.message}`;
+          console.error(errorMessage);
+          reject(new Error(errorMessage));
         })
         .on('end', () => {
-          console.log('Merging finished!');
+          console.log(`Music file copied to ${outputAudioPath}`);
           resolve();
         })
-        .on('error', (err) => {
-          console.error('Error:', err);
-          reject(err);
-        })
-        .run();
-    } catch (err) {
-      console.error('Error in addVoiceover:', err);
-      reject(err);
+        .save(outputAudioPath);
+    });
+  }
+
+  try {
+    console.log('Fetching voiceover durations...');
+    const voiceoverDurations: number[] = await Promise.all(
+      speechAudioFiles.map((voPath: string) => getAudioDuration(voPath))
+    );
+    console.log('Voiceover durations:', voiceoverDurations);
+
+    const command = ffmpeg();
+
+    command.input(musicAudioFile); // Input 0: Music
+    speechAudioFiles.forEach((voPath: string) => { // Inputs 1 to N: Voiceovers
+      command.input(voPath);
+    });
+
+    const filterComplex: string[] = [];
+    let musicStreamLabel = '[0:a]'; // Music is the first input
+
+    // 1. Construct the volume ducking condition for the music
+    const duckingConditions: string[] = voiceoverDurations.map((duration: number, index: number) => {
+      const startTime: number = index * voiceoverIntervalSeconds;
+      const endTime: number = startTime + duration;
+      // .toFixed(3) for precision with float seconds in FFmpeg filters
+      return `between(t,${startTime.toFixed(3)},${endTime.toFixed(3)})`;
+    });
+
+    // Only apply volume filter if there are conditions (i.e., voiceovers)
+    const duckingConditionString: string = duckingConditions.join('+');
+    if (duckingConditionString) {
+      filterComplex.push(
+        `${musicStreamLabel}volume=eval=frame:volume='if(${duckingConditionString}, ${musicVolumeDuringVoiceover}, 1.0)'[music_ducked]`
+      );
+      musicStreamLabel = '[music_ducked]'; // Update music stream to the ducked version
     }
-  });
+
+    // 2. Prepare voiceover streams with delays and give them labels
+    const delayedVoiceoverLabels: string[] = [];
+    speechAudioFiles.forEach((_voFile: string, index: number) => {
+      const voInputStreamLabel = `[${index + 1}:a]`; // Voiceover inputs start from 1
+      const voOutputLabel = `[vo${index}]`;
+      const delaySeconds: number = index * voiceoverIntervalSeconds;
+      // adelay takes values in milliseconds or seconds (with 's' suffix)
+      // 'all=1' ensures all channels (e.g. stereo) are delayed.
+      filterComplex.push(`${voInputStreamLabel}adelay=${delaySeconds}s:all=1${voOutputLabel}`);
+      delayedVoiceoverLabels.push(voOutputLabel);
+    });
+
+    // 3. Mix the ducked music and all delayed voiceovers
+    const allStreamsToMix: string[] = [musicStreamLabel, ...delayedVoiceoverLabels];
+    filterComplex.push(
+      `${allStreamsToMix.join('')}amix=inputs=${allStreamsToMix.length}:duration=first:dropout_transition=0[aout]`
+    );
+    filterComplex.push(
+      `[aout]loudnorm=I=-14:LRA=11:TP=-1.0[final_output]`
+    );
+
+    command.complexFilter(filterComplex, 'final_output');
+
+    // Set output options based on extension
+    const outputExtension: string = path.extname(outputAudioPath).toLowerCase();
+    // fluent-ffmpeg typically expects an array of strings for multiple options
+    if (outputExtension === '.mp3') {
+      command.outputOptions(['-c:a libmp3lame', '-q:a 2']); // VBR quality 2
+    } else if (outputExtension === '.aac' || outputExtension === '.m4a') {
+      command.outputOptions(['-c:a aac', '-b:a 192k']); // AAC with 192kbps
+    } else if (outputExtension === '.wav') {
+      command.outputOptions('-c:a pcm_s16le'); // Uncompressed WAV (single option string is fine)
+    } else {
+      console.warn(`Unknown output extension ${outputExtension}. Using libmp3lame audio codec by default.`);
+      command.outputOptions(['-c:a libmp3lame', '-q:a 2']);
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      command
+        .on('start', (commandLine: string) => {
+          console.log('Spawned FFmpeg with command: ' + commandLine);
+        })
+        .on('progress', (progress: {
+          frames: number;
+          currentFps: number;
+          currentKbps: number;
+          targetSize: number;
+          timemark: string;
+          percent?: number | undefined;
+        }) => {
+          if (typeof progress.percent === 'number') { // Check if percent is a number
+            console.log(`Processing: ${progress.percent.toFixed(2)}% done`);
+          } else if (progress.timemark) {
+            console.log(`Processing at: ${progress.timemark}`); // Fallback to timemark
+          }
+        })
+        .on('error', (err: Error, stdout: string | null, stderr: string | null) => {
+          const errorMessage = `Error processing audio: ${err.message}\nFFmpeg stdout: ${stdout?.toString()}\nFFmpeg stderr: ${stderr?.toString()}`;
+          console.error(errorMessage);
+          reject(new Error(errorMessage));
+        })
+        .on('end', (stdout: string | null, stderr: string | null) => {
+          console.log(`Audio mixing finished successfully. Output: ${outputAudioPath}`);
+          const stdOutput = stdout?.toString();
+          const stdError = stderr?.toString();
+          if (stdOutput) console.log('ffmpeg stdout:', stdOutput);
+          // stderr can contain informational messages as well, not just errors
+          if (stdError) console.log('ffmpeg stderr:', stdError);
+          resolve();
+        })
+        .save(outputAudioPath);
+    });
+
+  } catch (error: unknown) {
+    // Catch 'unknown' and then perform type checking for robust error handling
+    let errorMessage = "An unexpected error occurred during audio mixing.";
+    if (error instanceof Error) {
+      errorMessage = `Failed to mix audio: ${error.message}`;
+    } else if (typeof error === 'string') {
+      errorMessage = `Failed to mix audio: ${error}`;
+    }
+    console.error(errorMessage, error); // Log original error object for more context
+    throw new Error(errorMessage); // Re-throw as a standard Error object
+  }
 }

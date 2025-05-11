@@ -86,7 +86,7 @@ async function delay(ms: number): Promise<void> {
 
 export async function generateSceneVideo(prompt: string, imageBase64: string): Promise<string> {
   const token = await getAccessToken();
-  const maxRetries = 10; // Maximum number of retries
+  const maxRetries = 5; // Maximum number of retries
   const initialDelay = 1000; // Initial delay in milliseconds (1 second)
 
   const makeRequest = async (attempt: number) => {

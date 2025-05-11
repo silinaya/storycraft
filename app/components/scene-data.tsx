@@ -7,16 +7,10 @@ import { Pencil, RefreshCw, Video, Upload, Loader2 } from 'lucide-react'
 import { EditSceneModal } from './edit-scene-modal'
 import Image from 'next/image'
 import { VideoPlayer } from "./video-player"
+import { Scene } from '../types'
 
 interface SceneDataProps {
-  scene: {
-    imagePrompt: string;
-    videoPrompt: string;
-    description: string;
-    voiceover: string;
-    imageBase64?: string;
-    videoUri?: string | Promise<string>;
-  };
+  scene: Scene;
   sceneNumber: number;
   onUpdate: (updatedScene: SceneDataProps['scene']) => void;
   onRegenerateImage: () => void;

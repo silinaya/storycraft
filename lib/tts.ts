@@ -8,12 +8,12 @@ import { v4 as uuidv4 } from 'uuid'
 // Assuming you're using Google Cloud Text-to-Speech:
 const client = new textToSpeech.TextToSpeechClient();
 
-export async function tts(text: string): Promise<string | undefined> {    
+export async function tts(text: string, language: string, voice: string): Promise<string | undefined> {    
    const request = {
     input: { text },
     voice: { 
-      languageCode: 'en-US', 
-      name: 'en-US-Journey-D',
+      languageCode: language, 
+      name: `${language}-Chirp3-HD-${voice}`,
     },
     audioConfig: { 
       audioEncoding: protos.google.cloud.texttospeech.v1.AudioEncoding.MP3

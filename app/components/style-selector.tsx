@@ -36,9 +36,9 @@ export function StyleSelector({ styles, onSelect }: StyleSelectorProps) {
           <Image
             src={style.image || "/placeholder.svg"}
             alt={style.name}
-            layout="fill"
-            objectFit="cover"
-            className="rounded-lg"
+            fill
+            className="rounded-lg object-cover"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           />
           <div className="absolute inset-0 bg-black bg-opacity-40 flex items-end justify-center p-2">
             <span className="text-white text-sm font-medium">{style.name}</span>

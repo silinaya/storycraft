@@ -6,7 +6,7 @@ import { GetSignedUrlConfig } from '@google-cloud/storage';
 
 
 const USE_SIGNED_URL = process.env.USE_SIGNED_URL === "true";
-
+const USE_COSMO = process.env.USE_COSMO === "true";
 /**
  * Handles POST requests to generate videos from a list of scenes.
  *
@@ -32,38 +32,42 @@ export async function POST(req: Request): Promise<Response> {
       .filter(scene => scene.imageBase64)
       .map(async (scene, index) => {
         console.log(`Starting video generation for scene ${index + 1}`);
-        
-        const operationName = await generateSceneVideo(scene.videoPrompt, scene.imageBase64!);
-        console.log(`Operation started for scene ${index + 1}`);
-        
-        const generateVideoResponse = await waitForOperation(operationName);
-        console.log(`Video generation completed for scene ${index + 1}`);
-        
-        const gcsUri = generateVideoResponse.response.videos[0].gcsUri;
-        const [bucketName, ...pathSegments] = gcsUri.replace("gs://", "").split("/");
-        const fileName = pathSegments.join("/");
-        
         let url: string;
-        if (USE_SIGNED_URL) {
-          const options: GetSignedUrlConfig = {
-            version: 'v4',
-            action: 'read',
-            expires: Date.now() + 60 * 60 * 1000,
-          };
-
-          // storage.bucket(bucketName).file(fileName).copy()
-          
-          [url] = await storage.bucket(bucketName).file(fileName).getSignedUrl(options);
+        if (USE_COSMO) {
+          url = 'cosmo.mp4';
         } else {
-          const publicDir = path.join(process.cwd(), 'public');
-          const videoFile = path.join(publicDir, fileName);
-          // Get the directory of the destination path
-          const destinationDir = path.dirname(videoFile);
-          // Create the destination directory if it doesn't exist (recursive)
-          await fs.mkdir(destinationDir, { recursive: true });
+          const operationName = await generateSceneVideo(scene.videoPrompt, scene.imageBase64!);
+          console.log(`Operation started for scene ${index + 1}`);
+          
+          const generateVideoResponse = await waitForOperation(operationName);
+          console.log(`Video generation completed for scene ${index + 1}`);
+          
+          const gcsUri = generateVideoResponse.response.videos[0].gcsUri;
+          const [bucketName, ...pathSegments] = gcsUri.replace("gs://", "").split("/");
+          const fileName = pathSegments.join("/");
+        
+        
+          if (USE_SIGNED_URL) {
+            const options: GetSignedUrlConfig = {
+              version: 'v4',
+              action: 'read',
+              expires: Date.now() + 60 * 60 * 1000,
+            };
 
-          await storage.bucket(bucketName).file(fileName).download({ destination: videoFile });
-          url = fileName;
+            // storage.bucket(bucketName).file(fileName).copy()
+            
+            [url] = await storage.bucket(bucketName).file(fileName).getSignedUrl(options);
+          } else {
+            const publicDir = path.join(process.cwd(), 'public');
+            const videoFile = path.join(publicDir, fileName);
+            // Get the directory of the destination path
+            const destinationDir = path.dirname(videoFile);
+            // Create the destination directory if it doesn't exist (recursive)
+            await fs.mkdir(destinationDir, { recursive: true });
+
+            await storage.bucket(bucketName).file(fileName).download({ destination: videoFile });
+            url = fileName;
+          }
         }
         console.log('Video Genrated!', url)
         return url;

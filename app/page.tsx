@@ -15,6 +15,7 @@ import { type Style } from "./components/style-selector"
 import { VideoTab } from './components/video-tab'
 import { Scenario, Scene, type Language } from './types'
 import Image from 'next/image'
+import { Stepper } from "@/components/ui/stepper"
 
 const styles: Style[] = [
   { name: "Live-Action", image: "/styles/cinematic.jpg" },
@@ -44,6 +45,7 @@ export default function Home() {
   const [generatingScenes, setGeneratingScenes] = useState<Set<number>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [videoUri, setVideoUri] = useState<string | null>(null)
+  const [vttUri, setVttUri] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>("create")
 
   const FALLBACK_URL = "https://videos.pexels.com/video-files/4276282/4276282-hd_1920_1080_25fps.mp4"
@@ -144,16 +146,20 @@ export default function Home() {
         );
         if (result.success) {
           setVideoUri(result.videoUrl)
+          setVttUri(result.vttUrl || null)
         } else {
           setVideoUri(FALLBACK_URL)
+          setVttUri(null)
         }
       } else {
         setErrorMessage("All scenes should have a generated video")
         setVideoUri(FALLBACK_URL)
+        setVttUri(null)
       }
     } catch (error) {
       console.error("Error generating video:", error)
       setErrorMessage(error instanceof Error ? error.message : "An unknown error occurred while generating video")
+      setVttUri(null)
     } finally {
       setIsVideoLoading(false)
     }
@@ -304,8 +310,34 @@ export default function Home() {
 
   console.log("Component rendered");
 
+  const steps = [
+    {
+      id: "create",
+      label: "Create",
+      icon: PenLine
+    },
+    {
+      id: "scenario",
+      label: "Scenario",
+      icon: BookOpen,
+      disabled: !scenario
+    },
+    {
+      id: "storyboard",
+      label: "Storyboard",
+      icon: LayoutGrid,
+      disabled: !scenario
+    },
+    {
+      id: "video",
+      label: "Video",
+      icon: Film,
+      disabled: !scenario || !scenes.every(scene => typeof scene.videoUri === 'string')
+    }
+  ]
+
   return (
-    <main className="container mx-auto p-8 min-h-screen bg-background">
+    <main className="container mx-auto p-8 min-h-screen bg-background flex flex-col">
       <div className="flex items-center justify-center gap-2 mb-8">
         <Image 
           src="/logo.png" 
@@ -318,27 +350,15 @@ export default function Home() {
           StoryCraft
         </h1>
       </div>
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="w-full">
-          <TabsTrigger value="create" className="me-2">
-            <PenLine className="w-4 h-4 me-2 text-muted-foreground group-hover:text-foreground group-data-[state=active]:text-primary" />
-            Create
-          </TabsTrigger>
-          <TabsTrigger value="scenario" className="me-2">
-            <BookOpen className="w-4 h-4 me-2 text-muted-foreground group-hover:text-foreground group-data-[state=active]:text-primary" />
-            Scenario
-          </TabsTrigger>
-          <TabsTrigger value="storyboard" className="me-2">
-            <LayoutGrid className="w-4 h-4 me-2 text-muted-foreground group-hover:text-foreground group-data-[state=active]:text-primary" />
-            Storyboard
-          </TabsTrigger>
-          <TabsTrigger value="video">
-            <Film className="w-4 h-4 me-2 text-muted-foreground group-hover:text-foreground group-data-[state=active]:text-primary" />
-            Video
-          </TabsTrigger>
-        </TabsList>
+      <div className="flex-1 space-y-4">
+        <Stepper 
+          steps={steps}
+          currentStep={activeTab}
+          onStepClick={setActiveTab}
+          className="mb-8"
+        />
 
-        <TabsContent value="create">
+        {activeTab === "create" && (
           <CreateTab
             pitch={pitch}
             setPitch={setPitch}
@@ -357,16 +377,16 @@ export default function Home() {
             onLogoUpload={handleLogoUpload}
             onLogoRemove={handleLogoRemove}
           />
-        </TabsContent>
+        )}
 
-        <TabsContent value="scenario">
+        {activeTab === "scenario" && (
           <ScenarioTab 
             scenario={scenario} 
             onGenerateStoryBoard={handleGenerateStoryBoard}
           />
-        </TabsContent>
+        )}
 
-        <TabsContent value="storyboard">
+        {activeTab === "storyboard" && (
           <StoryboardTab
             scenes={scenes}
             isLoading={isLoading}
@@ -384,20 +404,29 @@ export default function Home() {
               setActiveTab("create");
             }}
           />
-        </TabsContent>
+        )}
 
-        <TabsContent value="video">
+        {activeTab === "video" && (
           <VideoTab
             videoUri={videoUri}
+            vttUri={vttUri}
             isVideoLoading={isVideoLoading}
             withVoiceOver={withVoiceOver}
             setWithVoiceOver={setWithVoiceOver}
             onEditVideo={handleEditVideo}
             scenes={scenes}
             generatingScenes={generatingScenes}
+            language={scenario?.language || DEFAULT_LANGUAGE}
           />
-        </TabsContent>
-      </Tabs>
+        )}
+      </div>
+      <footer className="mt-auto pt-8">
+        <div className="flex items-center justify-center gap-2">
+          <p className="text-sm text-muted-foreground">
+            Made with ❤️ by @mblanc
+          </p>
+        </div>
+      </footer>
     </main>
   )
 }

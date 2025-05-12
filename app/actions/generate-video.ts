@@ -15,7 +15,7 @@ export async function editVideo(
   withVoiceOver: boolean, 
   language: Language,
   logoOverlay?: string
-): Promise<{ success: true, videoUrl: string } | { success: false, error: string }> {
+): Promise<{ success: true, videoUrl: string, vttUrl?: string } | { success: false, error: string }> {
     
   try {
     console.log('Generating video...');
@@ -23,20 +23,35 @@ export async function editVideo(
     console.log('With voiceover:', withVoiceOver);
     
     const filteredGcsVideoUris = scenes.map((scene) => scene.videoUri).filter((s): s is string => s !== undefined);
-    const speachAudioFiles = await Promise.all(scenes.map(async (scene, index) => {
+    let filteredSpeachAudioFiles: string[] = [];
+    let voiceoverTexts: string[] = [];
+    if (withVoiceOver) {
+      const speachAudioFiles = await Promise.all(scenes.map(async (scene, index) => {
         try {
           console.log(`Generating tts for scene ${index + 1} in ${language.name}`);
           const filename = await tts(scene.voiceover, language.code, 'Algenib');
-          return filename;
+          return { filename, text: scene.voiceover };
         } catch (error) {
           console.error(`Error generating tts for scene ${index + 1}:`, error);
         }
       }));
-    const filteredSpeachAudioFiles = speachAudioFiles.filter((s): s is string => s !== undefined);
-    const url = await concatenateVideos(filteredGcsVideoUris, filteredSpeachAudioFiles, withVoiceOver, mood, logoOverlay);
-    console.log('url:', url);
+      const validResults = speachAudioFiles.filter((s): s is { filename: string; text: string } => s !== undefined);
+      filteredSpeachAudioFiles = validResults.map(r => r.filename);
+      voiceoverTexts = validResults.map(r => r.text);
+    }
+
+    const { videoUrl, vttUrl } = await concatenateVideos(
+      filteredGcsVideoUris, 
+      filteredSpeachAudioFiles,
+      voiceoverTexts,
+      withVoiceOver, 
+      mood, 
+      logoOverlay
+    );
+    console.log('videoUrl:', videoUrl);
+    if (vttUrl) console.log('vttUrl:', vttUrl);
     console.log(`Generated video!`);
-    return { success: true, videoUrl: url }
+    return { success: true, videoUrl, vttUrl }
   } catch (error) {
     console.error('Error in generateVideo:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Failed to generate video' }

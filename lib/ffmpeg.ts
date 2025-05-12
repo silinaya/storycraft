@@ -50,7 +50,14 @@ export function signedUrlToGcsUri(signedUrl: string): string {
   }
 }
 
-export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles: string[], withVoiceOver: boolean, mood: string, logoOverlay?: string): Promise<string> {
+export async function concatenateVideos(
+  gcsVideoUris: string[], 
+  speachAudioFiles: string[], 
+  voiceoverTexts: string[],
+  withVoiceOver: boolean, 
+  mood: string, 
+  logoOverlay?: string
+): Promise<{ videoUrl: string; vttUrl?: string }> {
   console.log(`Concatenate all videos`);
   console.log(mood);
   console.log(`logoOverlay ${logoOverlay}`)
@@ -59,10 +66,12 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
   const outputFileNameWithAudio = `${id}_with_audio.mp4`;
   const outputFileNameWithVoiceover = `${id}_with_voiceover.mp4`;
   const outputFileNameWithOverlay = `${id}_with_overlay.mp4`;
+  const vttFileName = `${id}.vtt`;
   let finalOutputPath;
   const storage = new Storage();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'video-concat-'));
   const concatenationList = path.join(tempDir, 'concat-list.txt');
+  const publicDir = path.join(process.cwd(), 'public');
 
   try {
     // Download all videos to local temp directory
@@ -127,6 +136,13 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
     const outputPathWithOverlay = path.join(tempDir, outputFileNameWithOverlay);
 
 
+    if (withVoiceOver) {
+      // generate vtt subtitle file
+      const vttSubtitleFile = path.join(publicDir, vttFileName);
+      await generateVttSubtitleFile(speachAudioFiles, voiceoverTexts, vttSubtitleFile);
+    }
+
+
     // Mix Voiceover and Music
     let musicAudioFile = audioFile;
     if (withVoiceOver) {
@@ -154,12 +170,13 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
 
     const publicFile = path.join(publicDir, outputFileNameWithVoiceover);
     fs.copyFileSync(finalOutputPath, publicFile);
-    let url: string;
+    let videoUrl: string;
+    let vttUrl: string | undefined;
+
     if (USE_SIGNED_URL) {
-      // // Upload result to GCS
+      // Upload video to GCS
       console.log(`Upload result to GCS`);
       const bucketName = GCS_VIDEOS_STORAGE_URI.replace("gs://", "").split("/")[0];
-      // Extract the destination path from the GCS URI, and combine with the outputFileName
       const destinationPath = path.join(GCS_VIDEOS_STORAGE_URI.replace(`gs://${bucketName}/`, ''), outputFileName);
       const bucket = storage.bucket(bucketName);
 
@@ -170,19 +187,41 @@ export async function concatenateVideos(gcsVideoUris: string[], speachAudioFiles
             contentType: 'video/mp4',
           },
         });
-      const file = bucket.file(destinationPath);
-      // Generate a signed URL (as explained in the previous response)
+
+      // Generate signed URLs
       const options: GetSignedUrlConfig = {
         version: 'v4',
-        action: 'read', // Change this to the desired action
+        action: 'read',
         expires: Date.now() + 60 * 60 * 1000, // 1 hour expiration
       };
-      [url] = await file.getSignedUrl(options);
+
+      const file = bucket.file(destinationPath);
+      [videoUrl] = await file.getSignedUrl(options);
+
+      if (withVoiceOver) {
+        // Upload VTT file to GCS
+        const vttDestinationPath = path.join(GCS_VIDEOS_STORAGE_URI.replace(`gs://${bucketName}/`, ''), vttFileName);
+        await bucket
+          .upload(path.join(publicDir, vttFileName), {
+            destination: vttDestinationPath,
+            metadata: {
+              contentType: 'text/vtt',
+            },
+          });
+        const vttFile = bucket.file(vttDestinationPath);
+        [vttUrl] = await vttFile.getSignedUrl(options);
+      }
     } else {
-      url = outputFileNameWithVoiceover;
+      videoUrl = outputFileNameWithVoiceover;
+      if (withVoiceOver) {
+        vttUrl = vttFileName;
+      }
     }
-    console.log('url:', url);
-    return url;
+
+    console.log('videoUrl:', videoUrl);
+    if (vttUrl) console.log('vttUrl:', vttUrl);
+    
+    return { videoUrl, vttUrl };
   } finally {
     // Clean up temporary files
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -496,4 +535,38 @@ export async function mixAudioWithVoiceovers(
     console.error(errorMessage, error); // Log original error object for more context
     throw new Error(errorMessage); // Re-throw as a standard Error object
   }
+}
+
+async function generateVttSubtitleFile(
+  speechAudioFiles: string[], 
+  voiceoverTexts: string[],
+  outputPath: string
+): Promise<void> {
+  const vttHeader = 'WEBVTT\n\n';
+  let vttContent = vttHeader;
+  let currentTime = 0;
+  const intervalSeconds = 8; // Same as voiceoverIntervalSeconds in mixAudioWithVoiceovers
+
+  for (let i = 0; i < speechAudioFiles.length; i++) {
+    const duration = await getAudioDuration(speechAudioFiles[i]);
+    const startTime = formatVttTime(currentTime);
+    const endTime = formatVttTime(currentTime + duration);
+    const text = voiceoverTexts[i] || `Voiceover ${i + 1}`;
+    
+    vttContent += `${startTime} --> ${endTime}\n`;
+    vttContent += `${text}\n\n`;
+    
+    currentTime += intervalSeconds;
+  }
+
+  fs.writeFileSync(outputPath, vttContent);
+}
+
+function formatVttTime(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 1000);
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
 }

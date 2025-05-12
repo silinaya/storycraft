@@ -7,22 +7,26 @@ import { Loader2, Video } from 'lucide-react'
 
 interface VideoTabProps {
   videoUri: string | null
+  vttUri: string | null
   isVideoLoading: boolean
   withVoiceOver: boolean
   setWithVoiceOver: (value: boolean) => void
   onEditVideo: () => Promise<void>
   scenes: Array<{ videoUri?: string | Promise<string> }>
   generatingScenes: Set<number>
+  language: { name: string; code: string }
 }
 
 export function VideoTab({
   videoUri,
+  vttUri,
   isVideoLoading,
   withVoiceOver,
   setWithVoiceOver,
   onEditVideo,
   scenes,
-  generatingScenes
+  generatingScenes,
+  language
 }: VideoTabProps) {
   return (
     <div className="space-y-8">
@@ -63,7 +67,7 @@ export function VideoTab({
       </div>
       {videoUri && (
         <div className="mb-8">
-          <VideoPlayer src={videoUri} />
+          <VideoPlayer src={videoUri} vttSrc={vttUri} language={language} />
         </div>
       )}
     </div>

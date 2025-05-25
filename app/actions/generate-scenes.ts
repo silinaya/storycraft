@@ -51,7 +51,7 @@ ${pitch}
 - Romantic
 - Sad
 
-5. Generate a short description of the music that will be used in the video.
+5. Generate a short description of the music that will be used in the video. No references to the story, no references to known artists or songs.
 
 6. After creating the scenario, generate ${numScenes} creative scenes to create a storyboard illustrating the scenario. Follow these guidelines for the scenes:
  a. For each scene, provide:
@@ -78,7 +78,7 @@ Here's an example of how your output should be structured:
  "scenario": "[Brief description of your creative scenario based on the given story pitch]",
  "genre": [Music genre],
  "mood": [Mood],
- "music": [Short description of the music that will be used in the video],
+ "music": [Short description of the music that will be used in the video, no references to the story, no references to known artists or songs],
  "language": {
    "name": "${language.name}",
    "code": "${language.code}"
@@ -184,8 +184,104 @@ Remember, your goal is to create a compelling and visually interesting story tha
       scenes = scenes.slice(0, numScenes)
     }
 
+    return scenario
+  } catch (error) {
+    console.error('Error generating scenes:', error)
+    throw new Error(`Failed to generate scenes: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
+
+
+export async function generateStoryboard(scenario: Scenario, numScenes: number, style: string, language: Language): Promise<Scenario> {
+  console.log('Create a storyboard')
+  console.log(scenario.scenario)
+  try {
+
+    const prompt = `
+      You are tasked with generating a creative scenes for a short movie and creating prompts for storyboard illustrations. Follow these instructions carefully:
+1. First, you will be given a scenario in ${scenario.language.name}. This scenario will be the foundation for your storyboard.
+
+<scenario>
+${scenario.scenario}
+</scenario>
+
+<characters>
+${scenario.characters.map(character => `${character.name}: ${character.description}`).join('\n')}
+</characters>
+
+<settings>
+${scenario.settings.map(setting => `${setting.name}: ${setting.description}`).join('\n')}
+</settings>
+
+<music>
+${scenario.music}
+</music>
+
+<mood>
+${scenario.mood}
+</mood>
+
+2. Generate ${numScenes} creative scenes to create a storyboard illustrating the scenario. Follow these guidelines for the scenes:
+ a. For each scene, provide:
+ 1. A detailed visual description for AI image generation (imagePrompt), the style should be ${style}. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your image prompts.  Always use indefinite articles when describing character(s). No children.
+ 2. A video prompt, focusing on the movement of the characters, objects, in the scene. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your image prompts.  Always use indefinite articles when describing character(s). No children.
+ 3. A scene description  in ${language.name} explaining what happens (description). You can use the character(s) name(s) in your descriptions.
+ 4. A short, narrator voiceover text in ${language.name}. One full sentence, 6s max. (voiceover). You can use the character(s) name(s) in your vocieovers. 
+a. Each image prompt should describe a key scene or moment from your scenario.
+b. Ensure that the image prompts, when viewed in sequence, tell a coherent story.
+c. Include descriptions of characters, settings, and actions that are consistent across all image prompts.
+d. Make each image prompt vivid and detailed enough to guide the creation of a storyboard illustration.
+
+7. Format your output as follows:
+- List the ${numScenes} scenes
+- Each image prompt in the scenes should reuse the full characters and settings description generated on the <characters> and <settings> tags every time, on every prompt
+- Do not include any additional text or explanations between the prompts.
+
+Format the response as a JSON object.
+Here's an example of how your output should be structured:
+{
+ "scenes": [
+ {
+  "imagePrompt": [A detailed visual description for AI image generation, the style should always be cinematic and photorealistic],
+  "videoPrompt": [A video prompt, focusing on the movement of the characters, objects, in the scene],
+  "description": [A scene description explaining what happens],
+  "voiceover": [A short, narrator voiceover text. One full sentence, 6s max.],
+  "charactersPresent": [An array list of names of characters visually present in the scene]
+ },
+ [...]
+ }
+ ]
+}
+
+Remember, your goal is to create a compelling and visually interesting story that can be effectively illustrated through a storyboard. Be creative, consistent, and detailed in your prompts.`
+
+    const { text } = await generateText({
+      model: vertex("gemini-2.0-flash-001"),
+      prompt,
+      temperature: 1
+    })
+
+    console.log('text', text)
+
+    if (!text) {
+      throw new Error('No text generated from the AI model')
+    }
+
+    try {
+      const cleanedText = text.replace(/\`\`\`json|\`\`\`/g, '').trim();
+      const parsedScenes = JSON.parse(cleanedText);
+      scenario.scenes = parsedScenes.scenes
+      console.log(scenario.scenes)
+    } catch (parseError) {
+      console.error('Error parsing AI response:', text)
+      throw new Error(`Failed to parse AI response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`)
+    }
+
+
+
+    
     // Generate images for each scene
-    const scenesWithImages = await Promise.all(scenes.map(async (scene, index) => {
+    const scenesWithImages = await Promise.all(scenario.scenes.map(async (scene, index) => {
       try {
         // const { images } = await generateImage({
         //   model: vertex.image('imagen-3.0-generate-001'),
@@ -196,10 +292,9 @@ Remember, your goal is to create a compelling and visually interesting story tha
         console.log(`Generating image for scene ${index + 1}`);
         let resultJson;
         if (false && scene.charactersPresent.length > 0) {
-          const presentCharacters = charactersWithImages.filter(character =>
-            scene.charactersPresent.includes(character.name)
+          const presentCharacters = scenario.characters.filter(character =>
+            scene.charactersPresent.includes(character.name)  
           );
-
           if (presentCharacters.length > 0) {
              console.log(`Using character customization for characters: ${presentCharacters.map(c => c.name).join(', ')}`);
              resultJson = await generateImageCustomizationRest(scene.imagePrompt, presentCharacters);

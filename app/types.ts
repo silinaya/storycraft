@@ -6,6 +6,7 @@ export interface Scene {
   charactersPresent: string[];
   imageBase64?: string;
   videoUri?: string | Promise<string>;
+  voiceoverAudioUri?: string | Promise<string>;
 }
 
 export interface Scenario {
@@ -13,6 +14,7 @@ export interface Scenario {
   genre: string;
   mood: string;
   music: string;
+  musicUrl?: string;
   language: Language;
   characters: Array<{ name: string, description: string, imageBase64?: string }>;
   settings: Array<{ name: string, description: string }>;

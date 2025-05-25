@@ -1,0 +1,97 @@
+import * as fs from 'fs/promises';
+import { GoogleAuth } from 'google-auth-library';
+import * as path from 'path';
+import { v4 as uuidv4 } from 'uuid';
+
+
+const LOCATION = process.env.LOCATION
+const PROJECT_ID = process.env.PROJECT_ID
+const MODEL = 'lyria-002' //'imagen-3.0-generate-002'
+
+async function getAccessToken(): Promise<string> {
+  const auth = new GoogleAuth({
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+  });
+  const client = await auth.getClient();
+  const accessToken = (await client.getAccessToken()).token;
+  // Check if accessToken is null or undefined
+  if (accessToken) {
+    return accessToken;
+  } else {
+    // Handle the case where accessToken is null or undefined
+    // This could involve throwing an error, retrying, or providing a default value
+    throw new Error('Failed to obtain access token.');
+  }
+}
+
+export async function generateMusicRest(prompt: string): Promise<string> {
+  const token = await getAccessToken();
+  const maxRetries = 1; // Maximum number of retries
+  const initialDelay = 1000; // Initial delay in milliseconds (1 second)
+  console.log(MODEL)
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(
+        `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${MODEL}:predict`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json; charset=utf-8',
+          },
+          body: JSON.stringify({
+            instances: [
+              {
+                prompt: prompt
+              },
+            ],
+            parameters: {
+              sampleCount: 1,
+            },
+          }),
+        }
+      )
+      // Check if the response was successful
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const jsonResult = await response.json(); // Parse as JSON
+      const audioContent = jsonResult.predictions[0].bytesBase64Encoded;
+      // Decode base64 to buffer
+      const audioBuffer = Buffer.from(audioContent, 'base64');
+
+      // Define the directory where you want to save the audio files
+      const publicDir = path.join(process.cwd(), 'public');
+      const outputDir = path.join(publicDir, 'music');
+
+      // Ensure the directory exists
+      await fs.mkdir(outputDir, { recursive: true });
+
+      // Generate a unique filename, e.g., using a timestamp or a UUID
+      const uuid = uuidv4();
+      const fileName = `music-${uuid}.wav`;
+      const filePath = path.join(outputDir, fileName);
+
+      // Write the audio content to a file
+      await fs.writeFile(filePath, audioBuffer);
+
+      console.log(`Audio content written to file: ${filePath}`);
+
+      // Return the relative file path (for serving the file)
+      return filePath;
+    } catch (error) {
+      if (attempt < maxRetries) {
+        const baseDelay = initialDelay * Math.pow(2, attempt); // Exponential backoff
+        const jitter = Math.random() * 2000; // Random value between 0 and baseDelay
+        const delay = baseDelay + jitter;
+        console.warn(`Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`, error);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error(`Failed after ${maxRetries} attempts.`, error);
+        throw error; // Re-throw the error after maximum retries
+      }
+    }
+  }
+  throw new Error("Function should have returned or thrown an error before this line.");
+}

@@ -2,7 +2,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid'; // You'll need to install this: npm install uuid @types/uuid
+import { v4 as uuidv4 } from 'uuid';
 
 export async function saveImageToPublic(base64String: string, originalFilename: string): Promise<string> {
   try {

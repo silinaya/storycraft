@@ -51,11 +51,11 @@ export function signedUrlToGcsUri(signedUrl: string): string {
 }
 
 export async function concatenateVideos(
-  gcsVideoUris: string[], 
-  speachAudioFiles: string[], 
+  gcsVideoUris: string[],
+  speachAudioFiles: string[],
   voiceoverTexts: string[],
-  withVoiceOver: boolean, 
-  mood: string, 
+  withVoiceOver: boolean,
+  mood: string,
   logoOverlay?: string
 ): Promise<{ videoUrl: string; vttUrl?: string }> {
   console.log(`Concatenate all videos`);
@@ -142,16 +142,12 @@ export async function concatenateVideos(
       await generateVttSubtitleFile(speachAudioFiles, voiceoverTexts, vttSubtitleFile);
     }
 
-
     // Mix Voiceover and Music
     let musicAudioFile = audioFile;
     if (withVoiceOver) {
       await mixAudioWithVoiceovers(speachAudioFiles, audioFile, outputPathWithVoiceover);
       musicAudioFile = outputPathWithVoiceover;
     }
-
-
-
 
     // Adding an audio file
     console.log(`Adding music`);
@@ -220,7 +216,7 @@ export async function concatenateVideos(
 
     console.log('videoUrl:', videoUrl);
     if (vttUrl) console.log('vttUrl:', vttUrl);
-    
+
     return { videoUrl, vttUrl };
   } finally {
     // Clean up temporary files
@@ -302,50 +298,59 @@ async function addOverlayTopRight(
   console.log(`  Overlay Scale: ${overlayScale * 100}% of video width`);
 
   return new Promise((resolve, reject) => {
-    // First, get the video dimensions
     ffmpeg.ffprobe(videoInputPath, (err, metadata) => {
       if (err) {
         console.error('Error getting video metadata:', err);
         return reject(err);
       }
 
-      // Get video dimensions
       const videoStream = metadata.streams.find(stream => stream.codec_type === 'video');
-      if (!videoStream) {
-        return reject(new Error('No video stream found'));
+      if (!videoStream || !videoStream.width || !videoStream.height) {
+        return reject(new Error('Could not determine video dimensions or stream not found'));
       }
 
       const videoWidth = videoStream.width;
-      const videoHeight = videoStream.height;
-
-      if (!videoWidth || !videoHeight) {
-        return reject(new Error('Could not determine video dimensions'));
-      }
-
-      // Calculate the overlay width based on the video width and scale factor
       const overlayWidth = Math.round(videoWidth * overlayScale);
 
-      console.log(`  Video dimensions: ${videoWidth}x${videoHeight}`);
+      console.log(`  Video dimensions: ${videoWidth}x${videoStream.height}`);
       console.log(`  Overlay width: ${overlayWidth}px (scaled)`);
 
-      // Now run ffmpeg with the calculated dimensions
       ffmpeg()
         .input(videoInputPath)
         .input(imageInputPath)
-        .complexFilter([
-          // Scale the overlay image to the calculated width, preserving aspect ratio
-          `[1:v]scale=${overlayWidth}:-1[scaled]`,
-
-          // Apply the overlay in the top-right corner with margin
-          `[0:v][scaled]overlay=W-w-${margin}:${margin}[outv]`
-        ], 'outv')
+        .complexFilter(
+          [
+            {
+              filter: 'scale',
+              options: { w: overlayWidth, h: -1 },
+              inputs: '1:v', // Use '1:v' for the second input's video stream
+              outputs: 'scaled_overlay' // Output label for the scaled image
+            },
+            {
+              filter: 'overlay',
+              options: { x: `W-w-${margin}`, y: margin },
+              inputs: ['0:v', 'scaled_overlay'], // Main video and scaled image
+              outputs: 'final_v' // Output label for video with overlay
+            },
+            {
+              filter: 'acopy',
+              inputs: '0:a', // Main audio stream
+              outputs: 'final_a' // Output label for audio
+            }
+          ],
+          ['final_v', 'final_a'] // Streams from the filter graph to map to output
+        )
         .outputOptions([
           '-c:v libx264',
           '-crf 23',
           '-preset veryfast',
-          '-c:a copy',
+          '-c:a aac',
+          '-b:a 192k',
           '-pix_fmt yuv420p'
         ])
+        .on('start', (commandLine) => {
+          console.log('Spawned FFmpeg command: ' + commandLine);
+        })
         .on('progress', (progress) => {
           if (progress.percent) {
             console.log(`Processing: ${Math.floor(progress.percent)}% done`);
@@ -538,7 +543,7 @@ export async function mixAudioWithVoiceovers(
 }
 
 async function generateVttSubtitleFile(
-  speechAudioFiles: string[], 
+  speechAudioFiles: string[],
   voiceoverTexts: string[],
   outputPath: string
 ): Promise<void> {
@@ -552,10 +557,10 @@ async function generateVttSubtitleFile(
     const startTime = formatVttTime(currentTime);
     const endTime = formatVttTime(currentTime + duration);
     const text = voiceoverTexts[i] || `Voiceover ${i + 1}`;
-    
+
     vttContent += `${startTime} --> ${endTime}\n`;
     vttContent += `${text}\n\n`;
-    
+
     currentTime += intervalSeconds;
   }
 
@@ -567,6 +572,6 @@ function formatVttTime(seconds: number): string {
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
   const ms = Math.floor((seconds % 1) * 1000);
-  
+
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
 }

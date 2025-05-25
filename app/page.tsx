@@ -1,24 +1,25 @@
 'use client'
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BookOpen, Film, LayoutGrid, PenLine } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { generateScenes } from './actions/generate-scenes'
+import { Stepper } from "@/components/ui/stepper"
+import { BookOpen, Film, LayoutGrid, PenLine, Scissors } from 'lucide-react'
+import Image from 'next/image'
+import { useEffect, useState } from 'react'
+import { generateScenes, generateStoryboard } from './actions/generate-scenes'
 import { editVideo } from './actions/generate-video'
 import { regenerateImage } from './actions/regenerate-image'
 import { resizeImage } from './actions/resize-image'
 import { saveImageToPublic } from './actions/upload-image'
-import { CreateTab } from './components/create-tab'
-import { ScenarioTab } from "./components/scenario-tab"
-import { StoryboardTab } from './components/storyboard-tab'
-import { type Style } from "./components/style-selector"
-import { VideoTab } from './components/video-tab'
+import { CreateTab } from './components/create/create-tab'
+import { ScenarioTab } from "./components/scenario/scenario-tab"
+import { StoryboardTab } from './components/storyboard/storyboard-tab'
+import { type Style } from "./components/create/style-selector"
+import { VideoTab } from './components/video/video-tab'
 import { Scenario, Scene, type Language } from './types'
-import Image from 'next/image'
-import { Stepper } from "@/components/ui/stepper"
+import { EditorTab } from './components/editor/editor-tab'
+import { generateMusic } from "./actions/generate-music"
 
 const styles: Style[] = [
-  { name: "Live-Action", image: "/styles/cinematic.jpg" },
+  { name: "Cinematic", image: "/styles/cinematic.jpg" },
   { name: "2D Animation", image: "/styles/2d.jpg" },
   { name: "Anime", image: "/styles/anime.jpg" },
   { name: "3D Animation", image: "/styles/3d.jpg" },
@@ -32,7 +33,7 @@ const DEFAULT_LANGUAGE: Language = {
 
 export default function Home() {
   const [pitch, setPitch] = useState('')
-  const [style, setStyle] = useState('Live-Action')
+  const [style, setStyle] = useState('Cinematic')
   const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE)
   const [logoOverlay, setLogoOverlay] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false);
@@ -47,6 +48,8 @@ export default function Home() {
   const [videoUri, setVideoUri] = useState<string | null>(null)
   const [vttUri, setVttUri] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>("create")
+  const [currentTime, setCurrentTime] = useState(0)
+  const [isGeneratingMusic, setIsGeneratingMusic] = useState(false)
 
   const FALLBACK_URL = "https://videos.pexels.com/video-files/4276282/4276282-hd_1920_1080_25fps.mp4"
 
@@ -73,6 +76,13 @@ export default function Home() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleLucky = async () => {
+    await handleGenerate()
+    await handleGenerateStoryBoard()
+    await handleGenerateAllVideos()
+    await handleEditVideo()
   }
 
   const handleRegenerateAllImages = async () => {
@@ -176,13 +186,13 @@ export default function Home() {
           const response = await fetch('/api/videos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify([scene]),
+            body: JSON.stringify({ scenes: [scene], language: scenario?.language }),
           });
 
-          const { success, videoUrls, error } = await response.json();
+          const { success, videoUrls, voiceoverAudioUrls, error } = await response.json();
 
           if (success) {
-            return { ...scene, videoUri: videoUrls[0] || FALLBACK_URL };
+            return { ...scene, videoUri: videoUrls[0] || FALLBACK_URL, voiceoverAudioUri: voiceoverAudioUrls[0] || null };
           } else {
             throw new Error(error);
           }
@@ -194,12 +204,61 @@ export default function Home() {
     );
 
     setScenes(regeneratedScenes);
+    if (scenario) {
+      setScenario({
+        ...scenario,
+        scenes: regeneratedScenes
+      });
+    }
     setGeneratingScenes(new Set());
+    setActiveTab("editor")
   };
+
+  const handleGenerateMusic = async () => {
+    if (!scenario) return
+    setIsGeneratingMusic(true)
+    setErrorMessage(null)
+    try {
+      const musicUrl = await generateMusic(scenario?.music)
+      const updatedScenario = {
+        ...scenario,
+        musicUrl: musicUrl
+      }
+      setScenario(updatedScenario)
+      console.log(musicUrl)
+    } catch (error) {
+      console.error('Error generating music:', error)
+      setErrorMessage(error instanceof Error ? error.message : 'An unknown error occurred while generating music')
+    } finally {
+      setIsGeneratingMusic(false)
+    }
+  }
 
   const handleGenerateStoryBoard = async () => {
     console.log("Generating storyboard");
-    setActiveTab("storyboard");
+
+    if (!scenario) return
+    setIsLoading(true)
+    setErrorMessage(null)
+    try {
+      // remove images from scenario scenes to avoid Body exceeded limit
+      scenario.scenes = scenario.scenes.map((scene) => ({
+        ...scene,
+        imageBase64: undefined
+      }))
+      console.log(scenario.scenes)
+      const scenarioWithStoryboard = await generateStoryboard(scenario, numScenes, style, language)
+      setScenario(scenarioWithStoryboard)
+      setScenes(scenarioWithStoryboard.scenes)
+      setActiveTab("storyboard") // Switch to storyboard tab after successful generation
+    } catch (error) {
+      console.error('Error generating storyboard:', error)
+      setErrorMessage(error instanceof Error ? error.message : 'An unknown error occurred while generating storyboard')
+      setScenes([]) // Clear any partially generated scenes
+      setActiveTab("scenario") // Stay on scenario tab if there's an error
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleGenerateVideo = async (index: number) => {
@@ -234,7 +293,12 @@ export default function Home() {
       );
     } finally {
       console.log(`[Client] Generating video done`);
-
+      if (scenario) {
+        setScenario({
+          ...scenario,
+          scenes: scenes
+        });
+      }
       setGeneratingScenes(prev => {
         const updated = new Set(prev);
         updated.delete(index); // Remove index from generatingScenes
@@ -272,7 +336,15 @@ export default function Home() {
   }
 
   const handleLogoRemove = () => {
-    setLogoOverlay(null)
+    setLogoOverlay(null);
+    
+    // Also remove logoOverlay from scenario if it exists
+    if (scenario) {
+      setScenario({
+        ...scenario,
+        logoOverlay: undefined
+      });
+    }
   }
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -291,6 +363,14 @@ export default function Home() {
       // Update state with the path to the saved image
       console.log(imagePath)
       setLogoOverlay(imagePath);
+      
+      // Update scenario's logoOverlay if it exists
+      if (scenario) {
+        setScenario({
+          ...scenario,
+          logoOverlay: imagePath
+        });
+      }
     } catch (error) {
       console.error("Error uploading logo:", error);
     } finally {
@@ -329,6 +409,12 @@ export default function Home() {
       disabled: !scenario
     },
     {
+      id: "editor",
+      label: "Editor",
+      icon: Scissors,
+      disabled: !scenario || !scenes.every(scene => typeof scene.videoUri === 'string')
+    },
+    {
       id: "video",
       label: "Video",
       icon: Film,
@@ -336,22 +422,26 @@ export default function Home() {
     }
   ]
 
+  const handleScenarioUpdate = (updatedScenario: Scenario) => {
+    setScenario(updatedScenario);
+  };
+
   return (
     <main className="container mx-auto p-8 min-h-screen bg-background flex flex-col">
       <div className="flex items-center justify-center gap-2 mb-8">
-        <Image 
-          src="/logo.png" 
-          alt="Storycraft" 
-          width={32} 
-          height={32} 
-          className="w-8 h-8" 
+        <Image
+          src="/logo5.png"
+          alt="Storycraft"
+          width={32}
+          height={32}
+          className="h-8"
         />
-        <h1 className="text-3xl font-bold text-primary">
-          StoryCraft
+        <h1 className="text-3xl font-bold text-primary ml-[-10px]">
+          toryCraft
         </h1>
       </div>
       <div className="flex-1 space-y-4">
-        <Stepper 
+        <Stepper
           steps={steps}
           currentStep={activeTab}
           onStepClick={setActiveTab}
@@ -368,21 +458,19 @@ export default function Home() {
             setStyle={setStyle}
             language={language}
             setLanguage={setLanguage}
-            logoOverlay={logoOverlay}
-            setLogoOverlay={setLogoOverlay}
             isLoading={isLoading}
             errorMessage={errorMessage}
             onGenerate={handleGenerate}
             styles={styles}
-            onLogoUpload={handleLogoUpload}
-            onLogoRemove={handleLogoRemove}
           />
         )}
 
         {activeTab === "scenario" && (
-          <ScenarioTab 
-            scenario={scenario} 
+          <ScenarioTab
+            scenario={scenario}
             onGenerateStoryBoard={handleGenerateStoryBoard}
+            isLoading={isLoading}
+            onScenarioUpdate={handleScenarioUpdate}
           />
         )}
 
@@ -403,6 +491,24 @@ export default function Home() {
               setScenes([]);
               setActiveTab("create");
             }}
+          />
+        )}
+
+        {activeTab === "editor" && scenario && (
+          <EditorTab
+            scenario={scenario}
+            currentTime={currentTime}
+            onTimeUpdate={setCurrentTime}
+            onTimelineItemUpdate={(layerId, itemId, updates) => {
+              // TODO: Implement timeline item updates
+              console.log('Timeline item update:', { layerId, itemId, updates })
+            }}
+            logoOverlay={logoOverlay}
+            setLogoOverlay={setLogoOverlay}
+            onLogoUpload={handleLogoUpload}
+            onLogoRemove={handleLogoRemove}
+            onGenerateMusic={handleGenerateMusic}
+            isGeneratingMusic={isGeneratingMusic}
           />
         )}
 

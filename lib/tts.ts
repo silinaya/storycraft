@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 // Assuming you're using Google Cloud Text-to-Speech:
 const client = new textToSpeech.TextToSpeechClient();
 
-export async function tts(text: string, language: string, voice: string): Promise<string | undefined> {
+export async function tts(text: string, language: string): Promise<string> {
   const listVoicesRequest: protos.google.cloud.texttospeech.v1.IListVoicesRequest = {
     languageCode: language,
   };
@@ -22,7 +22,7 @@ export async function tts(text: string, language: string, voice: string): Promis
     }
   } else {
     console.error('No voices found for language:', language);
-    return undefined;
+    throw new Error('No voices found for language');
   }
   console.log(voiceName);
   const request = {
@@ -42,7 +42,7 @@ export async function tts(text: string, language: string, voice: string): Promis
 
     if (!audioContent) {
       console.error("No audio content received from TTS API");
-      return undefined;
+      throw new Error('No audio content received from TTS API');
     }
 
     // Define the directory where you want to save the audio files
@@ -66,6 +66,6 @@ export async function tts(text: string, language: string, voice: string): Promis
     return filePath; // Important: Return the path relative to the 'public' directory
   } catch (error) {
     console.error('Error in tts function:', error);
-    return undefined;
+    throw error;
   }
 }

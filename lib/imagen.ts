@@ -1,4 +1,3 @@
-import { log } from 'console'
 import { GoogleAuth } from 'google-auth-library'
 
 

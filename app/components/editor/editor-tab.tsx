@@ -1,25 +1,12 @@
 import { Button } from '@/components/ui/button'
-import { Upload } from 'lucide-react'
+import { Upload, Film, Loader2 } from 'lucide-react'
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
-import { Scenario } from '../../types'
+import { Scenario, TimelineItem } from '../../types'
 import { AudioWaveform } from './audio-wave-form'
 import { VideoThumbnail } from './video-thumbnail'
-
-interface TimelineLayer {
-    id: string
-    name: string
-    type: 'video' | 'voiceover' | 'music'
-    items: TimelineItem[]
-}
-
-interface TimelineItem {
-    id: string
-    startTime: number
-    duration: number
-    content: string // URL for video/music, text for voiceover
-    type: 'video' | 'voiceover' | 'music'
-}
+import { exportMovieAction } from '@/app/actions/generate-video'
+import { TimelineLayer } from '@/app/types'
 
 interface EditorTabProps {
     scenario: Scenario
@@ -32,6 +19,10 @@ interface EditorTabProps {
     onLogoRemove: () => void
     onGenerateMusic: () => Promise<void>
     isGeneratingMusic?: boolean
+    onGenerateVoiceover: () => Promise<void>
+    isGeneratingVoiceover?: boolean
+    onExportMovie: (layers: TimelineLayer[]) => Promise<void>
+    isExporting?: boolean
 }
 
 const TIMELINE_DURATION = 60 // Total timeline duration in seconds
@@ -51,6 +42,10 @@ export function EditorTab({
     onLogoRemove,
     onGenerateMusic,
     isGeneratingMusic = false,
+    onGenerateVoiceover,
+    isGeneratingVoiceover = false,
+    onExportMovie,
+    isExporting = false,
 }: EditorTabProps) {
     const timelineRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -96,32 +91,23 @@ export function EditorTab({
                 startTime: index * SCENE_DURATION,
                 duration: SCENE_DURATION,
                 content: '', // Will be updated when videoUri is resolved
-                type: 'video'
+                type: 'video',
+                metadata: {
+                    logoOverlay: scenario.logoOverlay || undefined
+                }
             }))
         },
         {
             id: 'voiceovers',
             name: 'Voiceovers',
             type: 'voiceover',
-            items: scenario.scenes.map((scene, index) => ({
-                id: `voiceover-${index}`,
-                startTime: index * SCENE_DURATION,
-                duration: SCENE_DURATION, // Will be updated with actual audio duration
-                content: '', // Will be updated when voiceoverAudioUri is resolved
-                type: 'voiceover'
-            }))
+            items: [] // Empty items array, will be populated when voiceovers are generated
         },
         {
             id: 'music',
             name: 'Music',
             type: 'music',
-            items: [{
-                id: 'background-music',
-                startTime: 0,
-                duration: TIMELINE_DURATION,
-                content: '',
-                type: 'music'
-            }]
+            items: [] // Empty items array, will be populated when music is generated
         }
     ])
 
@@ -139,7 +125,7 @@ export function EditorTab({
         })
     }
 
-    // Update resolveUrlsAndUpdateLayers to directly update layers
+    // Update resolveUrlsAndUpdateLayers to handle empty items arrays
     useEffect(() => {
         const resolveUrlsAndUpdateLayers = async () => {
             if (layers.length === 0) return; // Ensure layers are initialized
@@ -172,6 +158,8 @@ export function EditorTab({
             }
 
             if (voiceoverLayer) {
+                // Only add voiceover items if they exist in the scenario
+                const voiceoverItems: TimelineItem[] = []
                 for (let i = 0; i < scenario.scenes.length; i++) {
                     const scene = scenario.scenes[i]
                     if (scene.voiceoverAudioUri) {
@@ -183,34 +171,42 @@ export function EditorTab({
                             // Get the actual duration of the audio file
                             const duration = await getAudioDuration(url)
 
-                            // Update the voiceover layer item content and duration directly
-                            const voiceoverItem = voiceoverLayer.items[i]
-                            if (voiceoverItem) {
-                                voiceoverItem.content = url
-                                voiceoverItem.duration = duration
-                            }
+                            // Add a new voiceover item
+                            voiceoverItems.push({
+                                id: `voiceover-${i}`,
+                                startTime: i * SCENE_DURATION,
+                                duration: duration,
+                                content: url,
+                                type: 'voiceover'
+                            })
                         } catch (error) {
                             console.error(`Error resolving voiceover for scene ${i}:`, error)
                         }
                     }
                 }
+                voiceoverLayer.items = voiceoverItems
             }
 
-            if (musicLayer && musicLayer.items[0]) {
+            if (musicLayer) {
+                // Only add music item if it exists in the scenario
                 if (scenario.musicUrl) {
                     try {
                         const url = scenario.musicUrl?.split('public/')[1] || ''
                         if (url) {
                             const duration = await getAudioDuration(url)
-                            const musicItem = musicLayer.items[0]
-                            if (musicItem) {
-                                musicItem.content = url
-                                musicItem.duration = duration
-                            }
+                            musicLayer.items = [{
+                                id: 'background-music',
+                                startTime: 0,
+                                duration: duration,
+                                content: url,
+                                type: 'music'
+                            }]
                         }
                     } catch (error) {
                         console.error(`Error resolving music:`, error)
                     }
+                } else {
+                    musicLayer.items = [] // Ensure music layer is empty if no music
                 }
             }
 
@@ -504,7 +500,7 @@ export function EditorTab({
                         source.connect(gainNode);
                         gainNode.connect(currentContext.destination);
 
-                        const targetVolume = clip.type === 'voiceover' ? 0.8 : 0.35; // Adjusted volumes
+                        const targetVolume = clip.type === 'voiceover' ? 0.8 : 0.5; // Adjusted volumes
                         gainNode.gain.setValueAtTime(0.0001, currentContext.currentTime);
                         gainNode.gain.exponentialRampToValueAtTime(targetVolume, currentContext.currentTime + FADE_DURATION);
 
@@ -718,60 +714,31 @@ export function EditorTab({
         onTimeUpdate(newTime)
     }
 
+    
+
     return (
         <div className="space-y-8">
-            <div className="flex justify-end items-center">
-                <div className="flex items-center space-x-2">
-                    <label htmlFor="logo-overlay" className="text-sm font-medium">
-                        Logo Overlay:
-                    </label>
-                    {logoOverlay ? (
-                        <div className="relative mx-auto w-full max-w-[100px] aspect-video overflow-hidden group">
-                            <Image
-                                src={logoOverlay}
-                                alt="Logo Overlay"
-                                className="w-full h-full object-contain rounded-t-lg"
-                                fill
-                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                                onError={(e) => {
-                                    const target = e.target as HTMLImageElement;
-                                    target.src = "/placeholder.svg";
-                                    target.onerror = null;
-                                }}
-                            />
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+            {/* Header with Export Movie button */}
+            <div className="flex justify-end">
                                 <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={onLogoRemove}
-                                    className="bg-gray-800 text-white border-gray-600 hover:bg-gray-700"
-                                >
-                                    Remove Image
-                                </Button>
-                            </div>
-                        </div>
+                    onClick={() => onExportMovie(layers)}
+                    disabled={isExporting}
+                    className="bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                    {isExporting ? (
+                        <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Exporting Movie...
+                        </>
                     ) : (
-                        <div className="w-full h-full flex flex-col">
-                            <Button
-                                variant="secondary"
-                                size="icon"
-                                className="bg-black/50 hover:bg-green-500 hover:text-white"
-                                onClick={handleLogoClick}
-                            >
-                                <Upload className="h-4 w-4" />
-                                <span className="sr-only">Upload image</span>
-                            </Button>
-                            <input
-                                type="file"
-                                ref={fileInputRef}
-                                onChange={onLogoUpload}
-                                accept="image/*"
-                                className="hidden"
-                            />
-                        </div>
+                        <>
+                            <Film className="mr-2 h-4 w-4" />
+                            Export Movie
+                        </>
                     )}
-                </div>
-            </div>
+                            </Button>
+                        </div>
+
             {/* Video Preview */}
             <div className="w-full max-w-3xl mx-auto relative">
                 <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
@@ -864,7 +831,8 @@ export function EditorTab({
                                         {layer.name}
                                     </div>
                                     <div className="relative h-full">
-                                        {layer.items.map((item) => {
+                                        {layer.items.length > 0 ? (
+                                            layer.items.map((item) => {
                                             const isSelected = selectedItem?.layerId === layer.id && selectedItem?.itemId === item.id
                                             const timelineWidth = timelineRef.current?.clientWidth || 0
                                             const paddingTime = (CLIP_PADDING * 2 * TIMELINE_DURATION) / timelineWidth
@@ -901,6 +869,33 @@ export function EditorTab({
                                                                 color="bg-green-500"
                                                                 duration={item.duration}
                                                             />
+                                                        </div>
+                                                    ) : layer.type === 'voiceover' && !hasContent ? (
+                                                        <div className="w-full h-full flex items-center justify-center bg-gray-100 border border-gray-200 rounded p-1">
+                                                            <Button
+                                                                variant="secondary"
+                                                                size="sm"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    onGenerateVoiceover();
+                                                                }}
+                                                                    disabled={isGeneratingVoiceover}
+                                                                className="bg-black/50 hover:bg-green-500 hover:text-white flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                            >
+                                                                {isGeneratingVoiceover ? (
+                                                                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                    </svg>
+                                                                ) : (
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                                                                        <path d="M9 18V5l12-2v13" />
+                                                                        <circle cx="6" cy="18" r="3" />
+                                                                        <circle cx="18" cy="16" r="3" />
+                                                                    </svg>
+                                                                )}
+                                                                {isGeneratingVoiceover ? 'Generating...' : 'Generate voiceover with ChirpV3'}
+                                                            </Button>
                                                         </div>
                                                     ) : layer.type === 'music' && hasContent ? (
                                                         <div className="w-full h-full bg-green-500/10 border border-green-500/30 rounded p-1">
@@ -957,7 +952,63 @@ export function EditorTab({
                                                     )}
                                                 </div>
                                             )
-                                        })}
+                                            })
+                                        ) : (
+                                            // Show generate button when layer is empty
+                                            <div className="w-full h-full flex items-center justify-center bg-gray-100 border border-gray-200 rounded p-1">
+                                                {layer.type === 'voiceover' ? (
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onGenerateVoiceover();
+                                                        }}
+                                                        disabled={isGeneratingVoiceover}
+                                                        className="bg-black/50 hover:bg-green-500 hover:text-white flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        {isGeneratingVoiceover ? (
+                                                            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                            </svg>
+                                                        ) : (
+                                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                                                                <path d="M9 18V5l12-2v13" />
+                                                                <circle cx="6" cy="18" r="3" />
+                                                                <circle cx="18" cy="16" r="3" />
+                                                            </svg>
+                                                        )}
+                                                        {isGeneratingVoiceover ? 'Generating...' : 'Generate voiceover with ChirpV3'}
+                                                    </Button>
+                                                ) : layer.type === 'music' ? (
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onGenerateMusic();
+                                                        }}
+                                                        disabled={isGeneratingMusic}
+                                                        className="bg-black/50 hover:bg-green-500 hover:text-white flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        {isGeneratingMusic ? (
+                                                            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                            </svg>
+                                                        ) : (
+                                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                                                                <path d="M9 18V5l12-2v13" />
+                                                                <circle cx="6" cy="18" r="3" />
+                                                                <circle cx="18" cy="16" r="3" />
+                                                            </svg>
+                                                        )}
+                                                        {isGeneratingMusic ? 'Generating...' : 'Generate music with Lyria'}
+                                                    </Button>
+                                                ) : null}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}

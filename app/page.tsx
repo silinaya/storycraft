@@ -5,7 +5,7 @@ import { BookOpen, Film, LayoutGrid, PenLine, Scissors } from 'lucide-react'
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { generateScenes, generateStoryboard } from './actions/generate-scenes'
-import { editVideo } from './actions/generate-video'
+import { editVideo, exportMovieAction } from './actions/generate-video'
 import { regenerateImage } from './actions/regenerate-image'
 import { resizeImage } from './actions/resize-image'
 import { saveImageToPublic } from './actions/upload-image'
@@ -14,9 +14,10 @@ import { ScenarioTab } from "./components/scenario/scenario-tab"
 import { StoryboardTab } from './components/storyboard/storyboard-tab'
 import { type Style } from "./components/create/style-selector"
 import { VideoTab } from './components/video/video-tab'
-import { Scenario, Scene, type Language } from './types'
+import { Scenario, Scene, type Language, TimelineLayer } from './types'
 import { EditorTab } from './components/editor/editor-tab'
 import { generateMusic } from "./actions/generate-music"
+import { generateVoiceover } from "./actions/generate-voiceover"
 
 const styles: Style[] = [
   { name: "Cinematic", image: "/styles/cinematic.jpg" },
@@ -50,7 +51,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<string>("create")
   const [currentTime, setCurrentTime] = useState(0)
   const [isGeneratingMusic, setIsGeneratingMusic] = useState(false)
-
+  const [isGeneratingVoiceover, setIsGeneratingVoiceover] = useState(false)
   const FALLBACK_URL = "https://videos.pexels.com/video-files/4276282/4276282-hd_1920_1080_25fps.mp4"
 
   useEffect(() => {
@@ -76,13 +77,6 @@ export default function Home() {
     } finally {
       setIsLoading(false)
     }
-  }
-
-  const handleLucky = async () => {
-    await handleGenerate()
-    await handleGenerateStoryBoard()
-    await handleGenerateAllVideos()
-    await handleEditVideo()
   }
 
   const handleRegenerateAllImages = async () => {
@@ -175,6 +169,32 @@ export default function Home() {
     }
   }
 
+  const handleExportMovie = async (layers: TimelineLayer[]) => {
+    setIsVideoLoading(true)
+    setErrorMessage(null)
+    try {
+      console.log('Export Movie');
+      console.log(layers)
+      const result = await exportMovieAction(
+        layers
+      );
+      if (result.success) {
+        setVideoUri(result.videoUrl)
+        setVttUri(result.vttUrl || null)
+        setActiveTab("video")
+      } else {
+        setVideoUri(FALLBACK_URL)
+        setVttUri(null)
+      }
+    } catch (error) {
+      console.error("Error generating video:", error)
+      setErrorMessage(error instanceof Error ? error.message : "An unknown error occurred while generating video")
+      setVttUri(null)
+    } finally {
+      setIsVideoLoading(false)
+    }
+  }
+
   const handleGenerateAllVideos = async () => {
     setErrorMessage(null);
     console.log("[Client] Generating videos for all scenes - START");
@@ -189,10 +209,10 @@ export default function Home() {
             body: JSON.stringify({ scenes: [scene], language: scenario?.language }),
           });
 
-          const { success, videoUrls, voiceoverAudioUrls, error } = await response.json();
+          const { success, videoUrls, error } = await response.json();
 
           if (success) {
-            return { ...scene, videoUri: videoUrls[0] || FALLBACK_URL, voiceoverAudioUri: voiceoverAudioUrls[0] || null };
+            return { ...scene, videoUri: videoUrls[0] || FALLBACK_URL };
           } else {
             throw new Error(error);
           }
@@ -213,6 +233,32 @@ export default function Home() {
     setGeneratingScenes(new Set());
     setActiveTab("editor")
   };
+
+  const handleGenerateVoiceover = async () => {
+    if (!scenario) return
+    setIsGeneratingVoiceover(true)
+    setErrorMessage(null)
+    try {
+      const scenesVoiceovers = scenario.scenes.map((scene) => ({
+        voiceover: scene.voiceover
+      }))
+      const voiceoverAudioUrls = await generateVoiceover(scenesVoiceovers, scenario.language)
+      const updatedScenes = scenes.map((scene, index) => ({
+        ...scene,
+        voiceoverAudioUri: voiceoverAudioUrls[index]
+      }))
+      setScenes(updatedScenes)
+      setScenario({
+        ...scenario,
+        scenes: updatedScenes // Update scenario with the new scenes that include voiceover URLs
+      })
+    } catch (error) {
+      console.error('Error generating voiceover:', error)
+      setErrorMessage(error instanceof Error ? error.message : 'An unknown error occurred while generating voiceover')
+    } finally {
+      setIsGeneratingVoiceover(false)
+    }
+  }
 
   const handleGenerateMusic = async () => {
     if (!scenario) return
@@ -267,18 +313,25 @@ export default function Home() {
       // Single scene generation logic remains the same
       setGeneratingScenes(prev => new Set([...prev, index]));
       const scene = scenes[index];
+      console.log('scene', scene);
 
       const response = await fetch('/api/videos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify([scene]),
+        body: JSON.stringify({ scenes: [scene] }),
       });
 
       const { success, videoUrls } = await response.json();
       const videoUri = success ? videoUrls[0] : FALLBACK_URL;
-      setScenes(prevScenes =>
-        prevScenes.map((s, i) => (i === index ? { ...s, videoUri } : s))
-      );
+      const updatedScenes = [...scenes]
+      updatedScenes[index] = { ...updatedScenes[index], videoUri }
+      setScenes(updatedScenes)
+      if (scenario) {
+        setScenario({
+          ...scenario,
+          scenes: updatedScenes
+        });
+      }
     } catch (error) {
       console.error("[Client] Error generating video:", error);
       setErrorMessage(
@@ -337,7 +390,7 @@ export default function Home() {
 
   const handleLogoRemove = () => {
     setLogoOverlay(null);
-    
+
     // Also remove logoOverlay from scenario if it exists
     if (scenario) {
       setScenario({
@@ -363,7 +416,7 @@ export default function Home() {
       // Update state with the path to the saved image
       console.log(imagePath)
       setLogoOverlay(imagePath);
-      
+
       // Update scenario's logoOverlay if it exists
       if (scenario) {
         setScenario({
@@ -509,6 +562,10 @@ export default function Home() {
             onLogoRemove={handleLogoRemove}
             onGenerateMusic={handleGenerateMusic}
             isGeneratingMusic={isGeneratingMusic}
+            onGenerateVoiceover={handleGenerateVoiceover}
+            isGeneratingVoiceover={isGeneratingVoiceover}
+            onExportMovie={handleExportMovie}
+            isExporting={isVideoLoading}
           />
         )}
 

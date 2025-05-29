@@ -7,6 +7,7 @@ import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
 import { Scene } from '../../types'
 import { EditSceneModal } from './edit-scene-modal'
+import { VideoPlayer } from "../video/video-player"
 
 interface SceneDataProps {
   scene: Scene;
@@ -32,28 +33,28 @@ export function SceneData({
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  
+
   useEffect(() => {
     const getVideoUrl = async () => {
-        console.log('Video URL change!')
-        if (typeof scene.videoUri === 'string') {
-          setVideoUrl(scene.videoUri);
-        } else if (scene.videoUri instanceof Promise) {
-          try {
-            const resolvedUrl = await scene.videoUri;
-            setVideoUrl(resolvedUrl);
-          } catch (error) {
-            console.error('Error resolving video URL:', error);
-            setVideoUrl(null); // or some default error URL
-          }
-        } else {
-          setVideoUrl(null);
+      console.log('Video URL change!')
+      if (typeof scene.videoUri === 'string') {
+        setVideoUrl(scene.videoUri);
+      } else if (scene.videoUri instanceof Promise) {
+        try {
+          const resolvedUrl = await scene.videoUri;
+          setVideoUrl(resolvedUrl);
+        } catch (error) {
+          console.error('Error resolving video URL:', error);
+          setVideoUrl(null); // or some default error URL
         }
+      } else {
+        setVideoUrl(null);
+      }
     }
 
     getVideoUrl();
   }, [scene.videoUri]);
-  
+
   const handleUploadClick = () => {
     fileInputRef.current?.click()
   }
@@ -74,12 +75,11 @@ export function SceneData({
               <Loader2 className="h-8 w-8 text-white animate-spin" />
             </div>
           )}
-          {/* {videoUrl ? (
+          {videoUrl ? (
             <div className="absolute inset-0">
               <VideoPlayer src={videoUrl} />
             </div>
-          ) : scene.imageBase64 ? ( */}
-          {scene.imageBase64 ? (
+          ) : scene.imageBase64 ? (
             <Image
               src={`data:image/png;base64,${scene.imageBase64}`}
               alt={`Scene ${sceneNumber}`}

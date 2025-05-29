@@ -1,12 +1,7 @@
 'use client'
 
-import { useState, useRef } from 'react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { StyleSelector, type Style } from "./style-selector"
-import { Loader2, LayoutGrid } from 'lucide-react'
-import Image from 'next/image'
 import {
   Select,
   SelectContent,
@@ -14,7 +9,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { LayoutGrid, Loader2 } from 'lucide-react'
 import { type Language } from '../../types'
+import { StyleSelector, type Style } from "./style-selector"
 
 const LANGUAGES: Language[] = [
   { name: "Arabic (Generic)", code: "ar-XA" },

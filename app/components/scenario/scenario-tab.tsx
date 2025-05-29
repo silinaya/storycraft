@@ -57,11 +57,6 @@ export function ScenarioTab({ scenario, onGenerateStoryBoard, isLoading, onScena
         setIsEditing(false);
     };
 
-    const handleCancel = () => {
-        setEditedScenario(scenario?.scenario || '');
-        setIsEditing(false);
-    };
-
     return (
         <div className="space-y-8">
             {scenario && (

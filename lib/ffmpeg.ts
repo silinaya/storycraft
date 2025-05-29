@@ -1,10 +1,10 @@
-import { Storage, GetSignedUrlConfig } from '@google-cloud/storage';
+import { TimelineLayer } from '@/app/types';
+import { GetSignedUrlConfig, Storage } from '@google-cloud/storage';
 import ffmpeg from 'fluent-ffmpeg';
-import { FfprobeData } from 'fluent-ffmpeg';
 import * as fs from 'fs';
-import * as path from 'path';
 import * as os from 'os';
-import { v4 as uuidv4 } from 'uuid'
+import * as path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 const USE_SIGNED_URL = process.env.USE_SIGNED_URL === "true";
 const GCS_VIDEOS_STORAGE_URI = process.env.GCS_VIDEOS_STORAGE_URI || '';
@@ -50,7 +50,7 @@ export function signedUrlToGcsUri(signedUrl: string): string {
   }
 }
 
-export async function concatenateVideos(
+export async function editVideo(
   gcsVideoUris: string[],
   speachAudioFiles: string[],
   voiceoverTexts: string[],
@@ -393,7 +393,7 @@ export async function mixAudioWithVoiceovers(
   speechAudioFiles: string[],
   musicAudioFile: string,
   outputAudioPath: string,
-  musicVolumeDuringVoiceover: number = 0.7,
+  musicVolumeDuringVoiceover: number = 0.4,
   voiceoverIntervalSeconds: number = 8
 ): Promise<void> {
   if (!musicAudioFile) {
@@ -451,7 +451,7 @@ export async function mixAudioWithVoiceovers(
     const duckingConditionString: string = duckingConditions.join('+');
     if (duckingConditionString) {
       filterComplex.push(
-        `${musicStreamLabel}volume=eval=frame:volume='if(${duckingConditionString}, ${musicVolumeDuringVoiceover}, 1.0)'[music_ducked]`
+        `${musicStreamLabel}volume=eval=frame:volume='if(${duckingConditionString}, ${musicVolumeDuringVoiceover}, 0.5)'[music_ducked]`
       );
       musicStreamLabel = '[music_ducked]'; // Update music stream to the ducked version
     }
@@ -574,4 +574,260 @@ function formatVttTime(seconds: number): string {
   const ms = Math.floor((seconds % 1) * 1000);
 
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+}
+
+async function concatenateVideos(
+  inputPaths: string[],
+  outputPath: string
+): Promise<void> {
+  // Create FFmpeg command
+  const command = ffmpeg();
+
+  // Add all video inputs
+  inputPaths.forEach(path => {
+    command.input(path);
+  });
+
+  // Build the filter complex
+  const filterComplex = [];
+
+  // First, check which inputs have audio and prepare the filter chain
+  const inputLabels = await Promise.all(inputPaths.map(async (path, i) => {
+    let videoDurationSecs = "0"; // Store as string initially
+    const hasAudio = await new Promise<boolean>((resolve) => {
+      ffmpeg.ffprobe(path, (err, metadata) => {
+        if (err) {
+          console.error(`Error probing ${path}:`, err);
+          resolve(false); // Assume no audio and attempt to get duration later
+          return;
+        }
+        // Get video duration
+        const videoStream = metadata.streams.find(s => s.codec_type === 'video');
+        if (videoStream && videoStream.duration) {
+          videoDurationSecs = videoStream.duration;
+        } else if (metadata.format && metadata.format.duration) {
+          videoDurationSecs = metadata.format.duration.toString();
+        }
+
+        const hasAudioStream = metadata.streams.some(s => s.codec_type === 'audio');
+        resolve(hasAudioStream);
+      });
+    });
+
+    const videoLabel = `[${i}:v]`;
+    filterComplex.push(`${videoLabel}setpts=PTS-STARTPTS[v${i}]`);
+
+    if (hasAudio) {
+      const audioLabel = `[${i}:a]`;
+      filterComplex.push(`${audioLabel}asetpts=PTS-STARTPTS[a${i}]`);
+      return `[v${i}][a${i}]`;
+    } else {
+      if (parseFloat(videoDurationSecs) <= 0) {
+        // Fallback if duration couldn't be read, log and use a default or error
+        console.warn(`Could not determine duration for ${path}, using default of 1s for silent audio. This might cause issues.`);
+        videoDurationSecs = "1"; // Or handle as an error
+      }
+      // For videos without audio, create a silent audio stream with explicit duration
+      filterComplex.push(`anullsrc=channel_layout=stereo:sample_rate=44100:duration=${videoDurationSecs}[a${i}]`);
+      return `[v${i}][a${i}]`;
+    }
+  }));
+
+  // Then concatenate all labeled streams
+  const concatInputs = inputLabels.join('');
+  filterComplex.push(`${concatInputs}concat=n=${inputPaths.length}:v=1:a=1[outv][outa]`);
+
+  // Apply the filter complex and set output options
+  command
+    .complexFilter(filterComplex, ['outv', 'outa'])
+    .format('mp4')  // Explicitly set output format
+    .outputOptions([
+      '-c:v libx264', // Use H.264 codec for video
+      '-preset medium', // Encoding preset
+      '-crf 23',      // Constant Rate Factor (quality)
+      '-c:a aac',     // Use AAC codec for audio
+      '-b:a 192k',    // Audio bitrate
+      '-movflags +faststart', // Enable fast start for web playback
+      '-y'            // Overwrite output file if it exists
+    ])
+    .output(outputPath);
+
+  // Execute the command with explicit error handling
+  await new Promise<void>((resolve, reject) => {
+    command
+      .on('start', (commandLine) => {
+        console.log('FFmpeg command:', commandLine);
+        // Verify the command doesn't have duplicate mappings
+        if (commandLine.includes('-map [outv] -map [outa] -map [outv] -map [outa]')) {
+          console.error('Command contains duplicate stream mappings');
+          reject(new Error('Invalid command: duplicate stream mappings'));
+          return;
+        }
+      })
+      .on('progress', (progress) => {
+        if (progress.percent) {
+          console.log(`Processing: ${Math.floor(progress.percent)}% done`);
+        }
+      })
+      .on('end', () => {
+        console.log('Video concatenation completed');
+        resolve();
+      })
+      .on('error', (err, stdout, stderr) => {
+        console.error('Error during video concatenation:', err);
+        console.error('FFmpeg stdout:', stdout);
+        console.error('FFmpeg stderr:', stderr);
+        reject(err);
+      })
+      .run();
+  });
+}
+
+export async function exportMovie(
+  layers: TimelineLayer[],
+): Promise<{ videoUrl: string; vttUrl?: string }> {
+  console.log(`Export Movie`);
+  console.log(layers)
+
+  const id = uuidv4();
+  const outputFileName = `${id}.mp4`;
+  const outputFileNameWithAudio = `${id}_with_audio.mp4`;
+  const outputFileNameWithVoiceover = `${id}_with_voiceover.mp4`;
+  const outputFileNameWithOverlay = `${id}_with_overlay.mp4`;
+  const vttFileName = `${id}.vtt`;
+  let finalOutputPath;
+  const storage = new Storage();
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'video-concat-'));
+  const publicDir = path.join(process.cwd(), 'public');
+
+  const videoLayer = layers.find(layer => layer.id === 'videos')
+  const voiceoverLayer = layers.find(layer => layer.id === 'voiceovers')
+  const musicLayer = layers.find(layer => layer.id === 'music')
+
+  if (!videoLayer) {
+    throw new Error('Missing video layer');
+  }
+
+  const gcsVideoUris = videoLayer.items.map(item => item.content);
+
+  try {
+    // Download all videos to local temp directory
+    console.log(`Download all videos`);
+    console.log(gcsVideoUris);
+    const localPaths = await Promise.all(
+      gcsVideoUris.map(async (signedUri, index) => {
+        let localPath: string;
+        if (USE_SIGNED_URL) {
+          const uri = signedUrlToGcsUri(signedUri);
+          const match = uri.match(/gs:\/\/([^\/]+)\/(.+)/);
+          if (!match) {
+            throw new Error(`Invalid GCS URI format: ${uri}`);
+          }
+
+          const [, bucket, filePath] = match;
+          localPath = path.join(tempDir, `video-${index}${path.extname(filePath)}`);
+
+          await storage
+            .bucket(bucket)
+            .file(filePath)
+            .download({ destination: localPath });
+        } else {
+          const publicDir = path.join(process.cwd(), 'public');
+          localPath = path.join(publicDir, signedUri);
+        }
+        return localPath;
+      })
+    );
+
+    // Concatenate videos using FFmpeg concat filter
+    console.log(`Concatenate videos using FFmpeg concat filter`);
+    const outputPath = path.join(tempDir, outputFileName);
+    await concatenateVideos(localPaths, outputPath);
+    finalOutputPath = outputPath;
+
+    const outputPathWithAudio = path.join(tempDir, outputFileNameWithAudio);
+    const outputPathWithVoiceover = path.join(tempDir, outputFileNameWithVoiceover);
+    let audioFile = path.join(publicDir, MOOD_MUSIC['Happy']);
+    if (musicLayer && musicLayer.items.length > 0) {
+      audioFile = path.join(publicDir, musicLayer.items[0].content);
+    }
+
+    // Mix Voiceover and Music
+    let musicAudioFile = audioFile;
+    if (voiceoverLayer) {
+      const speachAudioFiles = voiceoverLayer.items.map(item => path.join(publicDir, item.content));
+      await mixAudioWithVoiceovers(speachAudioFiles, audioFile, outputPathWithVoiceover);
+      musicAudioFile = outputPathWithVoiceover;
+    }
+
+    // Adding an audio file
+    console.log(`Adding music`);
+    await addAudioToVideoWithFadeOut(outputPath, musicAudioFile, outputPathWithAudio)
+    finalOutputPath = outputPathWithAudio;
+
+
+    const moviesDir = path.join(publicDir, 'movies');
+    const publicFile = path.join(moviesDir, outputFileNameWithVoiceover);
+    
+    // Create the directory if it doesn't exist
+    if (!fs.existsSync(moviesDir)) {
+      fs.mkdirSync(moviesDir, { recursive: true });
+    }
+    fs.copyFileSync(finalOutputPath, publicFile);
+    let videoUrl: string;
+    let vttUrl: string | undefined;
+
+    if (USE_SIGNED_URL) {
+      // Upload video to GCS
+      console.log(`Upload result to GCS`);
+      const bucketName = GCS_VIDEOS_STORAGE_URI.replace("gs://", "").split("/")[0];
+      const destinationPath = path.join(GCS_VIDEOS_STORAGE_URI.replace(`gs://${bucketName}/`, ''), outputFileName);
+      const bucket = storage.bucket(bucketName);
+
+      await bucket
+        .upload(finalOutputPath, {
+          destination: destinationPath,
+          metadata: {
+            contentType: 'video/mp4',
+          },
+        });
+
+      // Generate signed URLs
+      const options: GetSignedUrlConfig = {
+        version: 'v4',
+        action: 'read',
+        expires: Date.now() + 60 * 60 * 1000, // 1 hour expiration
+      };
+
+      const file = bucket.file(destinationPath);
+      [videoUrl] = await file.getSignedUrl(options);
+
+      if (voiceoverLayer) {
+        // Upload VTT file to GCS
+        const vttDestinationPath = path.join(GCS_VIDEOS_STORAGE_URI.replace(`gs://${bucketName}/`, ''), vttFileName);
+        await bucket
+          .upload(path.join(publicDir, vttFileName), {
+            destination: vttDestinationPath,
+            metadata: {
+              contentType: 'text/vtt',
+            },
+          });
+        const vttFile = bucket.file(vttDestinationPath);
+        [vttUrl] = await vttFile.getSignedUrl(options);
+      }
+    } else {
+      videoUrl = 'movies/' + outputFileNameWithVoiceover;
+      if (voiceoverLayer) {
+        vttUrl = vttFileName;
+      }
+    }
+
+    console.log('videoUrl:', videoUrl);
+    if (vttUrl) console.log('vttUrl:', vttUrl);
+
+    return { videoUrl, vttUrl };
+  } finally {
+    // Clean up temporary files
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 }

@@ -26,3 +26,22 @@ export interface Language {
   name: string;
   code: string;
 } 
+
+export interface TimelineLayer {
+  id: string
+  name: string
+  type: 'video' | 'voiceover' | 'music'
+  items: TimelineItem[]
+}
+
+export interface TimelineItem {
+  id: string
+  startTime: number
+  duration: number
+  content: string // URL for video/music/voiceover
+  type: 'video' | 'voiceover' | 'music'
+  metadata?: {
+    logoOverlay?: string
+    [key: string]: any // Allow for additional metadata fields
+  }
+}

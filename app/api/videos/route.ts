@@ -1,10 +1,7 @@
 import { generateSceneVideo, waitForOperation } from '@/lib/veo';
-import { Storage } from '@google-cloud/storage';
-import * as path from 'path';
+import { GetSignedUrlConfig, Storage } from '@google-cloud/storage';
 import * as fs from 'fs/promises';
-import { GetSignedUrlConfig } from '@google-cloud/storage';
-import { tts } from '@/lib/tts';
-import { Language } from '@/app/types';
+import * as path from 'path';
 
 
 const USE_SIGNED_URL = process.env.USE_SIGNED_URL === "true";
@@ -27,23 +24,26 @@ const placeholderVideoUrls = [
  */
 export async function POST(req: Request): Promise<Response> {
 
-  const {scenes, language}: { 
+
+  console.log('req', req);
+
+  const { scenes }: {
     scenes: Array<{
       imagePrompt: string;
       videoPrompt: string;
       description: string;
       voiceover: string;
       imageBase64?: string;
-    }>, 
-    language: Language;
+    }>
   } = await req.json();
 
-  
+
 
   try {
     console.log('Generating videos in parallel...');
+    console.log('scenes', scenes);
     const storage = new Storage();
-    
+
     const videoGenerationTasks = scenes
       .filter(scene => scene.imageBase64)
       .map(async (scene, index) => {
@@ -55,15 +55,15 @@ export async function POST(req: Request): Promise<Response> {
         } else {
           const operationName = await generateSceneVideo(scene.videoPrompt, scene.imageBase64!);
           console.log(`Operation started for scene ${index + 1}`);
-          
+
           const generateVideoResponse = await waitForOperation(operationName);
           console.log(`Video generation completed for scene ${index + 1}`);
-          
+
           const gcsUri = generateVideoResponse.response.videos[0].gcsUri;
           const [bucketName, ...pathSegments] = gcsUri.replace("gs://", "").split("/");
           const fileName = pathSegments.join("/");
-        
-        
+
+
           if (USE_SIGNED_URL) {
             const options: GetSignedUrlConfig = {
               version: 'v4',
@@ -72,7 +72,7 @@ export async function POST(req: Request): Promise<Response> {
             };
 
             // storage.bucket(bucketName).file(fileName).copy()
-            
+
             [url] = await storage.bucket(bucketName).file(fileName).getSignedUrl(options);
           } else {
             const publicDir = path.join(process.cwd(), 'public');
@@ -92,22 +92,11 @@ export async function POST(req: Request): Promise<Response> {
 
     const videoUrls = await Promise.all(videoGenerationTasks);
 
-    const speachAudioFiles = await Promise.all(scenes.map(async (scene, index) => {
-      try {
-        console.log(`Generating tts for scene ${index + 1} in ${language.name}`);
-        const filename = await tts(scene.voiceover, language.code, 'Algenib');
-        return { filename, text: scene.voiceover };
-      } catch (error) {
-        console.error(`Error generating tts for scene ${index + 1}:`, error);
-      }
-    }));
-    const voiceoverAudioUrls = speachAudioFiles.filter((s): s is { filename: string; text: string } => s !== undefined).map(r => r.filename.split('public/')[1]);
-
-    return Response.json({ success: true, videoUrls, voiceoverAudioUrls }); // Return response data if needed
+    return Response.json({ success: true, videoUrls }); // Return response data if needed
   } catch (error) {
     console.error('Error in generateVideo:', error);
     return Response.json(
-        { success: false, error: error instanceof Error ? error.message : 'Failed to generate video(s)' }
+      { success: false, error: error instanceof Error ? error.message : 'Failed to generate video(s)' }
     );
   }
 }

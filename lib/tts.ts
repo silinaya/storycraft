@@ -1,7 +1,7 @@
 import { GetSignedUrlConfig, Storage } from '@google-cloud/storage';
 import textToSpeech, { protos } from '@google-cloud/text-to-speech';
-import { promises as fs } from 'fs';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
 const USE_SIGNED_URL = process.env.USE_SIGNED_URL === "true";
@@ -56,7 +56,7 @@ export async function tts(text: string, language: string): Promise<string> {
     const outputDir = path.join(publicDir, 'tts'); // Example: public/audio
 
     // Ensure the directory exists
-    await fs.mkdir(outputDir, { recursive: true });
+    fs.mkdirSync(outputDir, { recursive: true });
 
     // Generate a unique filename, e.g., using a timestamp or a UUID
     const uuid = uuidv4();
@@ -64,7 +64,7 @@ export async function tts(text: string, language: string): Promise<string> {
     const filePath = path.join(outputDir, fileName);
 
     // Write the audio content to a file
-    await fs.writeFile(filePath, audioContent);
+    fs.writeFileSync(filePath, audioContent);
 
     console.log(`Audio content written to file: ${filePath}`);
 

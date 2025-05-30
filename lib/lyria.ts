@@ -1,7 +1,7 @@
 import { GetSignedUrlConfig, Storage } from '@google-cloud/storage';
-import * as fs from 'fs/promises';
-import { GoogleAuth } from 'google-auth-library';
+import * as fs from 'fs';
 import * as path from 'path';
+import { GoogleAuth } from 'google-auth-library';
 import { v4 as uuidv4 } from 'uuid';
 
 const USE_SIGNED_URL = process.env.USE_SIGNED_URL === "true";
@@ -71,7 +71,7 @@ export async function generateMusicRest(prompt: string): Promise<string> {
       const outputDir = path.join(publicDir, 'music');
 
       // Ensure the directory exists
-      await fs.mkdir(outputDir, { recursive: true });
+      fs.mkdirSync(outputDir, { recursive: true });
 
       // Generate a unique filename, e.g., using a timestamp or a UUID
       const uuid = uuidv4();
@@ -79,7 +79,7 @@ export async function generateMusicRest(prompt: string): Promise<string> {
       const filePath = path.join(outputDir, fileName);
 
       // Write the audio content to a file
-      await fs.writeFile(filePath, audioBuffer);
+      fs.writeFileSync(filePath, audioBuffer);
 
       console.log(`Audio content written to file: ${filePath}`);
 

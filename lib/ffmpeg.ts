@@ -71,7 +71,6 @@ export async function editVideo(
   const storage = new Storage();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'video-concat-'));
   const concatenationList = path.join(tempDir, 'concat-list.txt');
-  const publicDir = path.join(process.cwd(), 'public');
 
   try {
     // Download all videos to local temp directory

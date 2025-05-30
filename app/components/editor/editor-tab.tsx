@@ -191,7 +191,7 @@ export function EditorTab({
                 // Only add music item if it exists in the scenario
                 if (scenario.musicUrl) {
                     try {
-                        const url = scenario.musicUrl?.split('public/')[1] || ''
+                        const url = scenario.musicUrl || ''
                         if (url) {
                             const duration = await getAudioDuration(url)
                             musicLayer.items = [{

@@ -1,7 +1,13 @@
+import { GetSignedUrlConfig, Storage } from '@google-cloud/storage';
 import textToSpeech, { protos } from '@google-cloud/text-to-speech';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+
+const USE_SIGNED_URL = process.env.USE_SIGNED_URL === "true";
+const GCS_VIDEOS_STORAGE_URI = process.env.GCS_VIDEOS_STORAGE_URI || '';
+
+const storage = new Storage();
 
 // Assuming you're using Google Cloud Text-to-Speech:
 const client = new textToSpeech.TextToSpeechClient();
@@ -63,7 +69,35 @@ export async function tts(text: string, language: string): Promise<string> {
     console.log(`Audio content written to file: ${filePath}`);
 
     // Return the relative file path (for serving the file)
-    return filePath; // Important: Return the path relative to the 'public' directory
+    let voiceoverUrl: string;
+    if (USE_SIGNED_URL) {
+      // Upload video to GCS
+      console.log(`Upload result to GCS`);
+      const bucketName = GCS_VIDEOS_STORAGE_URI.replace("gs://", "").split("/")[0];
+      const destinationPath = path.join(GCS_VIDEOS_STORAGE_URI.replace(`gs://${bucketName}/`, ''), fileName);
+      const bucket = storage.bucket(bucketName);
+
+      await bucket
+        .upload(filePath, {
+          destination: destinationPath,
+          metadata: {
+            contentType: 'video/mp4',
+          },
+        });
+
+      // Generate signed URLs
+      const options: GetSignedUrlConfig = {
+        version: 'v4',
+        action: 'read',
+        expires: Date.now() + 60 * 60 * 1000, // 1 hour expiration
+      };
+
+      const file = bucket.file(destinationPath);
+      [voiceoverUrl] = await file.getSignedUrl(options);
+    } else {
+      voiceoverUrl = filePath.split('public/')[1];
+    }
+    return voiceoverUrl;
   } catch (error) {
     console.error('Error in tts function:', error);
     throw error;

@@ -35,13 +35,17 @@ export function VideoThumbnail({ src, duration, className }: VideoThumbnailProps
         }
 
         const generateThumbnails = async () => {
-            const frames: string[] = []
-            // Capture one frame every 2 seconds, up to the duration
-            for (let time = 0; time < duration; time += 2) {
-                const frame = await captureFrame(time)
-                frames.push(frame)
+            try {
+                const frames: string[] = []
+                // Capture one frame every 2 seconds, up to the duration
+                for (let time = 0; time < duration; time += 2) {
+                    const frame = await captureFrame(time)
+                    frames.push(frame)
+                }
+                setThumbnails(frames)
+            } catch (error) {
+                console.error('Error generating thumbnails:', error)
             }
-            setThumbnails(frames)
         }
 
         video.addEventListener('loadeddata', generateThumbnails)

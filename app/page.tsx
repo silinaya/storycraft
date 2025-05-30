@@ -20,7 +20,7 @@ import { generateMusic } from "./actions/generate-music"
 import { generateVoiceover } from "./actions/generate-voiceover"
 
 const styles: Style[] = [
-  { name: "Cinematic", image: "/styles/cinematic.jpg" },
+  { name: "Photographic", image: "/styles/cinematic.jpg" },
   { name: "2D Animation", image: "/styles/2d.jpg" },
   { name: "Anime", image: "/styles/anime.jpg" },
   { name: "3D Animation", image: "/styles/3d.jpg" },
@@ -34,7 +34,7 @@ const DEFAULT_LANGUAGE: Language = {
 
 export default function Home() {
   const [pitch, setPitch] = useState('')
-  const [style, setStyle] = useState('Cinematic')
+  const [style, setStyle] = useState('Photographic')
   const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE)
   const [logoOverlay, setLogoOverlay] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false);

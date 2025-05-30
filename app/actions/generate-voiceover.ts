@@ -15,7 +15,7 @@ export async function generateVoiceover(
         const filename = await tts(scene.voiceover, language.code);
         return { filename, text: scene.voiceover };
     }));
-    const voiceoverAudioUrls = speachAudioFiles.map(r => r.filename.split('public/')[1]);
+    const voiceoverAudioUrls = speachAudioFiles.map(r => r.filename);
     return voiceoverAudioUrls;
   } catch (error) {
     console.error('Error generating voiceover:', error)

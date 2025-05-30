@@ -61,12 +61,6 @@ export async function tts(text: string, language: string): Promise<string> {
     // Generate a unique filename, e.g., using a timestamp or a UUID
     const uuid = uuidv4();
     const fileName = `audio-${uuid}.mp3`;
-    const filePath = path.join(outputDir, fileName);
-
-    // Write the audio content to a file
-    fs.writeFileSync(filePath, audioContent);
-
-    console.log(`Audio content written to file: ${filePath}`);
 
     // Return the relative file path (for serving the file)
     let voiceoverUrl: string;
@@ -76,14 +70,14 @@ export async function tts(text: string, language: string): Promise<string> {
       const bucketName = GCS_VIDEOS_STORAGE_URI.replace("gs://", "").split("/")[0];
       const destinationPath = path.join(GCS_VIDEOS_STORAGE_URI.replace(`gs://${bucketName}/`, ''), fileName);
       const bucket = storage.bucket(bucketName);
+      const file = bucket.file(destinationPath);
 
-      await bucket
-        .upload(filePath, {
-          destination: destinationPath,
-          metadata: {
-            contentType: 'video/mp4',
-          },
-        });
+
+      await file.save(audioContent, {
+        metadata: {
+          contentType: `audio/mpeg`, // Set the correct content type
+        }
+      });
 
       // Generate signed URLs
       const options: GetSignedUrlConfig = {
@@ -92,9 +86,11 @@ export async function tts(text: string, language: string): Promise<string> {
         expires: Date.now() + 60 * 60 * 1000, // 1 hour expiration
       };
 
-      const file = bucket.file(destinationPath);
       [voiceoverUrl] = await file.getSignedUrl(options);
     } else {
+      const filePath = path.join(outputDir, fileName);
+      // Write the audio content to a file
+      fs.writeFileSync(filePath, audioContent);
       voiceoverUrl = filePath.split('public/')[1];
     }
     return voiceoverUrl;

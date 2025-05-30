@@ -8,7 +8,7 @@ const USE_SIGNED_URL = process.env.USE_SIGNED_URL === "true";
 const GCS_VIDEOS_STORAGE_URI = process.env.GCS_VIDEOS_STORAGE_URI || '';
 const LOCATION = process.env.LOCATION
 const PROJECT_ID = process.env.PROJECT_ID
-const MODEL = 'lyria-002' //'imagen-3.0-generate-002'
+const MODEL = 'lyria-002'
 
 
 const storage = new Storage();
@@ -76,41 +76,34 @@ export async function generateMusicRest(prompt: string): Promise<string> {
       // Generate a unique filename, e.g., using a timestamp or a UUID
       const uuid = uuidv4();
       const fileName = `music-${uuid}.wav`;
-      const filePath = path.join(outputDir, fileName);
-
-      // Write the audio content to a file
-      fs.writeFileSync(filePath, audioBuffer);
-
-      console.log(`Audio content written to file: ${filePath}`);
 
       // Return the relative file path (for serving the file)
-
       let musicUrl: string;
       if (USE_SIGNED_URL) {
-        // Upload video to GCS
+        // Upload to GCS
         console.log(`Upload result to GCS`);
         const bucketName = GCS_VIDEOS_STORAGE_URI.replace("gs://", "").split("/")[0];
         const destinationPath = path.join(GCS_VIDEOS_STORAGE_URI.replace(`gs://${bucketName}/`, ''), fileName);
         const bucket = storage.bucket(bucketName);
-  
-        await bucket
-          .upload(filePath, {
-            destination: destinationPath,
-            metadata: {
-              contentType: 'video/mp4',
-            },
-          });
-  
+        const file = bucket.file(destinationPath);
+
+        await file.save(audioBuffer, {
+          metadata: {
+            contentType: `audio/wav`, // Set the correct content type
+          }
+        });
+
         // Generate signed URLs
         const options: GetSignedUrlConfig = {
           version: 'v4',
           action: 'read',
           expires: Date.now() + 60 * 60 * 1000, // 1 hour expiration
         };
-  
-        const file = bucket.file(destinationPath);
         [musicUrl] = await file.getSignedUrl(options);
       } else {
+        // Write the audio content to a file
+        const filePath = path.join(outputDir, fileName);
+        fs.writeFileSync(filePath, audioBuffer);
         musicUrl = filePath.split('public/')[1];
       }
       return musicUrl;

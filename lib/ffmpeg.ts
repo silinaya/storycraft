@@ -743,7 +743,7 @@ export async function exportMovie(
     const outputPath = path.join(tempDir, outputFileName);
     await concatenateVideos(localPaths, outputPath);
     finalOutputPath = outputPath;
-
+    console.log(`Concatenate videos done`);
     const outputPathWithAudio = path.join(tempDir, outputFileNameWithAudio);
     const outputPathWithVoiceover = path.join(tempDir, outputFileNameWithVoiceover);
     let audioFile = path.join(publicDir, MOOD_MUSIC['Happy']);
@@ -752,6 +752,7 @@ export async function exportMovie(
     }
 
     // Mix Voiceover and Music
+    console.log(`Mix Voiceover and Music`);
     let musicAudioFile = audioFile;
     if (voiceoverLayer) {
       const speachAudioFiles = voiceoverLayer.items.map(item => path.join(publicDir, item.content));
@@ -764,15 +765,6 @@ export async function exportMovie(
     await addAudioToVideoWithFadeOut(outputPath, musicAudioFile, outputPathWithAudio)
     finalOutputPath = outputPathWithAudio;
 
-
-    const moviesDir = path.join(publicDir, 'movies');
-    const publicFile = path.join(moviesDir, outputFileNameWithVoiceover);
-    
-    // Create the directory if it doesn't exist
-    if (!fs.existsSync(moviesDir)) {
-      fs.mkdirSync(moviesDir, { recursive: true });
-    }
-    fs.copyFileSync(finalOutputPath, publicFile);
     let videoUrl: string;
     let vttUrl: string | undefined;
 
@@ -815,6 +807,14 @@ export async function exportMovie(
         [vttUrl] = await vttFile.getSignedUrl(options);
       }
     } else {
+      const moviesDir = path.join(publicDir, 'movies');
+      const publicFile = path.join(moviesDir, outputFileNameWithVoiceover);
+      
+      // Create the directory if it doesn't exist
+      if (!fs.existsSync(moviesDir)) {
+        fs.mkdirSync(moviesDir, { recursive: true });
+      }
+      fs.copyFileSync(finalOutputPath, publicFile);
       videoUrl = 'movies/' + outputFileNameWithVoiceover;
       if (voiceoverLayer) {
         vttUrl = vttFileName;
@@ -825,6 +825,9 @@ export async function exportMovie(
     if (vttUrl) console.log('vttUrl:', vttUrl);
 
     return { videoUrl, vttUrl };
+  } catch (error) {
+    console.error('Error exporting movie:', error)
+    throw new Error(`Failed to movie: ${error instanceof Error ? error.message : 'Unknown error'}`)
   } finally {
     // Clean up temporary files
     fs.rmSync(tempDir, { recursive: true, force: true });

@@ -24,9 +24,6 @@ const placeholderVideoUrls = [
  */
 export async function POST(req: Request): Promise<Response> {
 
-
-  console.log('req', req);
-
   const { scenes }: {
     scenes: Array<{
       imagePrompt: string;

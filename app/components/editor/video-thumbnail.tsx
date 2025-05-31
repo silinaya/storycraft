@@ -56,7 +56,7 @@ export function VideoThumbnail({ src, duration, className }: VideoThumbnailProps
 
     return (
         <>
-            <video ref={videoRef} src={src} className="hidden" />
+            <video ref={videoRef} src={src} className="hidden" crossOrigin="anonymous" />
             <canvas ref={canvasRef} className="hidden" />
             {thumbnails.length > 0 ? (
                 <div className={`${className} grid grid-flow-col auto-cols-fr gap-px bg-black/10`}>

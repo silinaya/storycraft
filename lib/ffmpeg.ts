@@ -738,6 +738,8 @@ export async function exportMovie(
       })
     );
 
+
+
     // Concatenate videos using FFmpeg concat filter
     console.log(`Concatenate videos using FFmpeg concat filter`);
     const outputPath = path.join(tempDir, outputFileName);
@@ -748,14 +750,57 @@ export async function exportMovie(
     const outputPathWithVoiceover = path.join(tempDir, outputFileNameWithVoiceover);
     let audioFile = path.join(publicDir, MOOD_MUSIC['Happy']);
     if (musicLayer && musicLayer.items.length > 0) {
-      audioFile = path.join(publicDir, musicLayer.items[0].content);
+      // Download music to local temp directory
+      console.log(`Download music`);
+      if (USE_SIGNED_URL) {
+        const uri = signedUrlToGcsUri(musicLayer.items[0].content);
+        const match = uri.match(/gs:\/\/([^\/]+)\/(.+)/);
+        if (!match) {
+          throw new Error(`Invalid GCS URI format: ${uri}`);
+        }
+
+        const [, bucket, filePath] = match;
+        audioFile = path.join(tempDir, `music${path.extname(filePath)}`);
+
+        await storage
+          .bucket(bucket)
+          .file(filePath)
+          .download({ destination: audioFile });
+      } else {
+        audioFile = path.join(publicDir, musicLayer.items[0].content);
+      }
     }
 
     // Mix Voiceover and Music
     console.log(`Mix Voiceover and Music`);
     let musicAudioFile = audioFile;
     if (voiceoverLayer) {
-      const speachAudioFiles = voiceoverLayer.items.map(item => path.join(publicDir, item.content));
+      // Download all videos to local temp directory
+      console.log(`Download all voiceovers`);
+      const speachAudioFiles = await Promise.all(
+        voiceoverLayer.items.map(async (item, index) => {
+          let localPath: string;
+          if (USE_SIGNED_URL) {
+            const uri = signedUrlToGcsUri(item.content);
+            const match = uri.match(/gs:\/\/([^\/]+)\/(.+)/);
+            if (!match) {
+              throw new Error(`Invalid GCS URI format: ${uri}`);
+            }
+
+            const [, bucket, filePath] = match;
+            localPath = path.join(tempDir, `voiceover-${index}${path.extname(filePath)}`);
+
+            await storage
+              .bucket(bucket)
+              .file(filePath)
+              .download({ destination: localPath });
+          } else {
+            const publicDir = path.join(process.cwd(), 'public');
+            localPath = path.join(publicDir, item.content);
+          }
+          return localPath;
+        })
+      );
       await mixAudioWithVoiceovers(speachAudioFiles, audioFile, outputPathWithVoiceover);
       musicAudioFile = outputPathWithVoiceover;
     }
@@ -764,7 +809,6 @@ export async function exportMovie(
     console.log(`Adding music`);
     await addAudioToVideoWithFadeOut(outputPath, musicAudioFile, outputPathWithAudio)
     finalOutputPath = outputPathWithAudio;
-
     let videoUrl: string;
     let vttUrl: string | undefined;
 

@@ -747,7 +747,11 @@ export function EditorTab({
                         className="w-full h-full object-contain"
                         onTimeUpdate={handleVideoTimeUpdate}
                         onEnded={handleVideoEnded}
-                        playsInline
+                        onLoadedMetadata={(e) => {
+                            const video = e.currentTarget;
+                            video.volume = 0.5;
+                        }}
+                        playsInline={true}
                         preload="auto"
                     />
                     {logoOverlay && (

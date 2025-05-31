@@ -837,19 +837,19 @@ export async function exportMovie(
       const file = bucket.file(destinationPath);
       [videoUrl] = await file.getSignedUrl(options);
 
-      if (voiceoverLayer) {
-        // Upload VTT file to GCS
-        const vttDestinationPath = path.join(GCS_VIDEOS_STORAGE_URI.replace(`gs://${bucketName}/`, ''), vttFileName);
-        await bucket
-          .upload(path.join(publicDir, vttFileName), {
-            destination: vttDestinationPath,
-            metadata: {
-              contentType: 'text/vtt',
-            },
-          });
-        const vttFile = bucket.file(vttDestinationPath);
-        [vttUrl] = await vttFile.getSignedUrl(options);
-      }
+      // if (voiceoverLayer) {
+      //   // Upload VTT file to GCS
+      //   const vttDestinationPath = path.join(GCS_VIDEOS_STORAGE_URI.replace(`gs://${bucketName}/`, ''), vttFileName);
+      //   await bucket
+      //     .upload(path.join(publicDir, vttFileName), {
+      //       destination: vttDestinationPath,
+      //       metadata: {
+      //         contentType: 'text/vtt',
+      //       },
+      //     });
+      //   const vttFile = bucket.file(vttDestinationPath);
+      //   [vttUrl] = await vttFile.getSignedUrl(options);
+      // }
     } else {
       const moviesDir = path.join(publicDir, 'movies');
       const publicFile = path.join(moviesDir, outputFileNameWithVoiceover);
@@ -860,9 +860,9 @@ export async function exportMovie(
       }
       fs.copyFileSync(finalOutputPath, publicFile);
       videoUrl = 'movies/' + outputFileNameWithVoiceover;
-      if (voiceoverLayer) {
-        vttUrl = vttFileName;
-      }
+      // if (voiceoverLayer) {
+      //   vttUrl = vttFileName;
+      // }
     }
 
     console.log('videoUrl:', videoUrl);

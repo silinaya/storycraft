@@ -229,7 +229,7 @@ async function addAudioToVideoWithFadeOut(
   outputPath: string
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    // 1. Get Video Duration using ffprobe
+    // 1. Get Video Duration and check for audio track using ffprobe
     ffmpeg.ffprobe(videoPath, (err, metadata) => {
       if (err) {
         console.error('Error getting video metadata:', err);
@@ -244,6 +244,9 @@ async function addAudioToVideoWithFadeOut(
         return;
       }
 
+      // Check if video has audio track
+      const hasAudio = metadata.streams.some(stream => stream.codec_type === 'audio');
+
       // Fade out settings
       const fadeOutDuration = 3; // seconds
       const fadeOutStartTime = videoDuration - fadeOutDuration;
@@ -256,11 +259,26 @@ async function addAudioToVideoWithFadeOut(
       // }
 
       // 2. Add Audio to Video with Fade-Out
-      ffmpeg(videoPath)
-        .input(audioPath)
-        .complexFilter([
+      const command = ffmpeg(videoPath)
+        .input(audioPath);
+
+      const filterComplex: string[] = [];
+
+      if (hasAudio) {
+        // Mix original video audio with new audio
+        filterComplex.push(
+          '[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=0[mixed_audio]',
+          `[mixed_audio]afade=t=out:st=${fadeOutStartTime}:d=${fadeOutDuration}[faded_audio]`
+        );
+      } else {
+        // Just fade out the new audio
+        filterComplex.push(
           `[1:a]afade=t=out:st=${fadeOutStartTime}:d=${fadeOutDuration}[faded_audio]`
-        ])
+        );
+      }
+
+      command
+        .complexFilter(filterComplex)
         .outputOptions([
           '-map 0:v',
           '-map [faded_audio]',

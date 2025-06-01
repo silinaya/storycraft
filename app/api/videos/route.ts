@@ -1,3 +1,4 @@
+import { Scene } from '@/app/types';
 import { generateSceneVideo, waitForOperation } from '@/lib/veo';
 import { GetSignedUrlConfig, Storage } from '@google-cloud/storage';
 import * as fs from 'fs/promises';
@@ -25,13 +26,7 @@ const placeholderVideoUrls = [
 export async function POST(req: Request): Promise<Response> {
 
   const { scenes }: {
-    scenes: Array<{
-      imagePrompt: string;
-      videoPrompt: string;
-      description: string;
-      voiceover: string;
-      imageBase64?: string;
-    }>
+    scenes: Array<Scene>
   } = await req.json();
 
 
@@ -42,7 +37,7 @@ export async function POST(req: Request): Promise<Response> {
     const storage = new Storage();
 
     const videoGenerationTasks = scenes
-      .filter(scene => scene.imageBase64)
+      .filter(scene => scene.imageGcsUri)
       .map(async (scene, index) => {
         console.log(`Starting video generation for scene ${index + 1}`);
         let url: string;
@@ -50,7 +45,7 @@ export async function POST(req: Request): Promise<Response> {
           // randomize the placeholder video urls
           url = placeholderVideoUrls[Math.floor(Math.random() * placeholderVideoUrls.length)];
         } else {
-          const operationName = await generateSceneVideo(scene.videoPrompt, scene.imageBase64!);
+          const operationName = await generateSceneVideo(scene.videoPrompt, scene.imageGcsUri!);
           console.log(`Operation started for scene ${index + 1}`);
 
           const generateVideoResponse = await waitForOperation(operationName);

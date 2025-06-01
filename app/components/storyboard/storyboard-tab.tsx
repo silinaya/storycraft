@@ -3,45 +3,38 @@
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Grid, List, Loader2, Presentation, Video, ChevronLeft, ChevronRight } from 'lucide-react'
-import Image from 'next/image'
 import { useState } from 'react'
 import { Scene } from "../../types"
 import { SceneData } from './scene-data'
+import { GcsImage } from '../ui/gcs-image'
 
 type ViewMode = 'grid' | 'list' | 'slideshow'
 
 interface StoryboardTabProps {
   scenes: Scene[]
-  isLoading: boolean
   isVideoLoading: boolean
   generatingScenes: Set<number>
   errorMessage: string | null
-  onRegenerateAllImages: () => Promise<void>
   onGenerateAllVideos: () => Promise<void>
   onUpdateScene: (index: number, updatedScene: Scene) => void
   onRegenerateImage: (index: number) => Promise<void>
   onGenerateVideo: (index: number) => Promise<void>
   onUploadImage: (index: number, file: File) => Promise<void>
-  onStartOver: () => void
 }
 
 export function StoryboardTab({
   scenes,
-  isLoading,
   isVideoLoading,
   generatingScenes,
   errorMessage,
-  onRegenerateAllImages,
   onGenerateAllVideos,
   onUpdateScene,
   onRegenerateImage,
   onGenerateVideo,
   onUploadImage,
-  onStartOver,
 }: StoryboardTabProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
   const [currentSlide, setCurrentSlide] = useState(0)
-  const [isSlideshowOpen, setIsSlideshowOpen] = useState(false)
 
   const renderScenes = () => {
     switch (viewMode) {
@@ -113,22 +106,16 @@ export function StoryboardTab({
         return (
           <div className="relative max-w-4xl mx-auto">
             <div className="aspect-video relative bg-black rounded-lg overflow-hidden max-h-[60vh] group">
-              <Image
-                src={scenes[currentSlide].imageBase64 ? `data:image/png;base64,${scenes[currentSlide].imageBase64}` : "/placeholder.svg"}
+              <GcsImage
+                gcsUri={scenes[currentSlide].imageGcsUri || null}
                 alt={`Scene ${currentSlide + 1}`}
-                fill
                 className="w-full h-full object-contain"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.src = "/placeholder.svg";
-                  target.onerror = null;
-                }}
               />
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={goToPrevious}
-                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/75 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/75 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
               >
                 <ChevronLeft className="h-6 w-6" />
                 <span className="sr-only">Previous scene</span>
@@ -137,12 +124,12 @@ export function StoryboardTab({
                 variant="ghost"
                 size="icon"
                 onClick={goToNext}
-                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/75 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/75 text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
               >
                 <ChevronRight className="h-6 w-6" />
                 <span className="sr-only">Next scene</span>
               </Button>
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 px-3 py-2 bg-black/50 rounded-full backdrop-blur-sm">
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 px-3 py-2 bg-black/50 rounded-full backdrop-blur-sm z-10">
                 {scenes.map((_, index) => (
                   <button
                     key={index}

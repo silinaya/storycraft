@@ -84,7 +84,7 @@ async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function generateSceneVideo(prompt: string, imageBase64: string): Promise<string> {
+export async function generateSceneVideo(prompt: string, imageGcsUri: string): Promise<string> {
   const token = await getAccessToken();
   const maxRetries = 5; // Maximum number of retries
   const initialDelay = 1000; // Initial delay in milliseconds (1 second)
@@ -104,7 +104,7 @@ export async function generateSceneVideo(prompt: string, imageBase64: string): P
               {
                 prompt: prompt,
                 image: {
-                  bytesBase64Encoded: imageBase64,
+                  gcsUri: imageGcsUri,
                   mimeType: "png",
                 },
               },

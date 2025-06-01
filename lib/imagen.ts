@@ -3,6 +3,7 @@ import { GoogleAuth } from 'google-auth-library'
 
 const LOCATION = process.env.LOCATION
 const PROJECT_ID = process.env.PROJECT_ID
+const GCS_VIDEOS_STORAGE_URI = process.env.GCS_VIDEOS_STORAGE_URI
 const MODEL = 'imagen-4.0-generate-preview-05-20' //'imagen-3.0-generate-002'
 const MODEL_EDIT = 'imagen-3.0-capability-001'
 
@@ -59,6 +60,7 @@ export async function generateImageRest(prompt: string, aspectRatio?: string): P
               sampleCount: 1,
               aspectRatio: aspectRatio ? aspectRatio : "16:9",
               includeRaiReason: true,
+              storageUri: GCS_VIDEOS_STORAGE_URI,
             },
           }),
         }

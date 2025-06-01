@@ -3,11 +3,11 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Loader2, Pencil, RefreshCw, Upload, Video } from 'lucide-react'
-import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
 import { Scene } from '../../types'
 import { EditSceneModal } from './edit-scene-modal'
 import { VideoPlayer } from "../video/video-player"
+import { GcsImage } from "../ui/gcs-image"
 
 interface SceneDataProps {
   scene: Scene;
@@ -32,7 +32,7 @@ export function SceneData({
 }: SceneDataProps) {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const getVideoUrl = async () => {
@@ -45,7 +45,7 @@ export function SceneData({
           setVideoUrl(resolvedUrl);
         } catch (error) {
           console.error('Error resolving video URL:', error);
-          setVideoUrl(null); // or some default error URL
+          setVideoUrl(null);
         }
       } else {
         setVideoUrl(null);
@@ -79,31 +79,12 @@ export function SceneData({
             <div className="absolute inset-0">
               <VideoPlayer src={videoUrl} />
             </div>
-          ) : scene.imageBase64 ? (
-            <Image
-              src={`data:image/png;base64,${scene.imageBase64}`}
-              alt={`Scene ${sceneNumber}`}
-              className="absolute inset-0 w-full h-full object-cover object-center rounded-t-lg"
-              fill
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.src = "/placeholder.svg";
-                target.onerror = null; // Prevent infinite loop
-              }}
-            />
           ) : (
-            <Image
-              src='/placeholder.svg'
+            <GcsImage
+              gcsUri={scene.imageGcsUri || null}
               alt={`Scene ${sceneNumber}`}
               className="absolute inset-0 w-full h-full object-cover object-center rounded-t-lg"
-              fill
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.src = "/placeholder.svg";
-                target.onerror = null; // Prevent infinite loop
-              }}
             />
           )}
           {!hideControls && (

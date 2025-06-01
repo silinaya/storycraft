@@ -4,7 +4,7 @@ export interface Scene {
   description: string;
   voiceover: string;
   charactersPresent: string[];
-  imageBase64?: string;
+  imageGcsUri?: string;
   videoUri?: string | Promise<string>;
   voiceoverAudioUri?: string | Promise<string>;
 }
@@ -16,7 +16,7 @@ export interface Scenario {
   music: string;
   musicUrl?: string;
   language: Language;
-  characters: Array<{ name: string, description: string, imageBase64?: string }>;
+  characters: Array<{ name: string, description: string, imageGcsUri?: string }>;
   settings: Array<{ name: string, description: string }>;
   logoOverlay?: string;
   scenes: Scene[];

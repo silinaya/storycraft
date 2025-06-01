@@ -79,40 +79,15 @@ export default function Home() {
     }
   }
 
-  const handleRegenerateAllImages = async () => {
-    setIsLoading(true)
-    setErrorMessage(null)
-    try {
-      // Regenerate all images
-      const regeneratedScenes = await Promise.all(
-        scenes.map(async (scene) => {
-          try {
-            const { imageBase64 } = await regenerateImage(scene.imagePrompt)
-            return { ...scene, imageBase64, videoUri: undefined }
-          } catch (error) {
-            console.error(`Error regenerating image:`, error)
-            return scene // Keep the existing image if regeneration fails
-          }
-        }),
-      )
-      setScenes(regeneratedScenes)
-    } catch (error) {
-      console.error("Error regenerating images:", error)
-      setErrorMessage(`Failed to regenerate image(s): ${error instanceof Error ? error.message : "Unknown error"}`)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   const handleRegenerateImage = async (index: number) => {
     setGeneratingScenes(prev => new Set([...prev, index]));
     setErrorMessage(null)
     try {
       // Regenerate a single image
       const scene = scenes[index]
-      const { imageBase64 } = await regenerateImage(scene.imagePrompt)
+      const { imageGcsUri } = await regenerateImage(scene.imagePrompt)
       const updatedScenes = [...scenes]
-      updatedScenes[index] = { ...scene, imageBase64, videoUri: undefined }
+      updatedScenes[index] = { ...scene, imageGcsUri, videoUri: undefined }
       console.log(updatedScenes)
       setScenes(updatedScenes)
     } catch (error) {
@@ -287,12 +262,6 @@ export default function Home() {
     setIsLoading(true)
     setErrorMessage(null)
     try {
-      // remove images from scenario scenes to avoid Body exceeded limit
-      scenario.scenes = scenario.scenes.map((scene) => ({
-        ...scene,
-        imageBase64: undefined
-      }))
-      console.log(scenario.scenes)
       const scenarioWithStoryboard = await generateStoryboard(scenario, numScenes, style, language)
       setScenario(scenarioWithStoryboard)
       setScenes(scenarioWithStoryboard.scenes)
@@ -373,9 +342,9 @@ export default function Home() {
       reader.onloadend = async () => {
         const base64String = reader.result as string
         const imageBase64 = base64String.split(",")[1] // Remove the data URL prefix
-        const resizedImageBase64 = await resizeImage(imageBase64);
+        const resizedImageGcsUri = await resizeImage(imageBase64);
         const updatedScenes = [...scenes]
-        updatedScenes[index] = { ...updatedScenes[index], imageBase64: resizedImageBase64, videoUri: undefined }
+        updatedScenes[index] = { ...updatedScenes[index], imageGcsUri: resizedImageGcsUri, videoUri: undefined }
         setScenes(updatedScenes)
       }
       reader.onerror = () => {
@@ -530,20 +499,14 @@ export default function Home() {
         {activeTab === "storyboard" && (
           <StoryboardTab
             scenes={scenes}
-            isLoading={isLoading}
             isVideoLoading={isVideoLoading}
             generatingScenes={generatingScenes}
             errorMessage={errorMessage}
-            onRegenerateAllImages={handleRegenerateAllImages}
             onGenerateAllVideos={handleGenerateAllVideos}
             onUpdateScene={handleUpdateScene}
             onRegenerateImage={handleRegenerateImage}
             onGenerateVideo={handleGenerateVideo}
             onUploadImage={handleUploadImage}
-            onStartOver={() => {
-              setScenes([]);
-              setActiveTab("create");
-            }}
           />
         )}
 

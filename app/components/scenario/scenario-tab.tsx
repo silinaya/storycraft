@@ -2,10 +2,10 @@
 
 import { Button } from "@/components/ui/button"
 import { LayoutGrid, Loader2, Pencil } from "lucide-react";
-import Image from 'next/image'
 import { Scenario } from "../../types";
 import { useState, useRef, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
+import { GcsImage } from "../ui/gcs-image";
 
 interface ScenarioTabProps {
     scenario?: Scenario;
@@ -115,22 +115,12 @@ export function ScenarioTab({ scenario, onGenerateStoryBoard, isLoading, onScena
                         </div>
                         {scenario.characters.map((character) => (
                             <div key={character.name} className="flex gap-4 items-start">
-                                <div className="flex-shrink-0">
-                                    <Image
-                                        src={`data:image/png;base64,${character.imageBase64}`}
+                                <div className="flex-shrink-0 w-[200px] h-[200px] relative">
+                                    <GcsImage
+                                        gcsUri={character.imageGcsUri || null}
                                         alt={`Character ${character.name}`}
-                                        width={200}
-                                        height={200}
                                         className="object-cover rounded-lg shadow-md"
-                                        onError={(e) => {
-                                            const target = e.target as HTMLImageElement;
-                                            target.src = "/placeholder.svg";
-                                            target.onerror = null;
-                                            target.width = 200;
-                                            target.height = 200;
-                                            target.classList.add('object-contain');
-                                            target.classList.remove('object-cover');
-                                        }}
+                                        sizes="200px"
                                     />
                                 </div>
                                 <div className="flex-grow">

@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import Image from 'next/image'
 import { VideoPlayer } from '../video/video-player'
+import { GcsImage } from '../ui/gcs-image'
 
 interface EditSceneModalProps {
   isOpen: boolean;
@@ -16,7 +16,7 @@ interface EditSceneModalProps {
     description: string;
     voiceover: string;
     charactersPresent: string[];
-    imageBase64?: string;
+    imageGcsUri?: string;
     videoUri?: string | Promise<string>;
   };
   sceneNumber: number;
@@ -41,7 +41,7 @@ export function EditSceneModal({ isOpen, onClose, scene, sceneNumber, onUpdate }
             setVideoUrl(resolvedUrl);
           } catch (error) {
             console.error('Error resolving video URL:', error);
-            setVideoUrl(null); // or some default error URL
+            setVideoUrl(null);
           }
         }
     }
@@ -67,27 +67,12 @@ export function EditSceneModal({ isOpen, onClose, scene, sceneNumber, onUpdate }
                 <div className="absolute inset-0">
                   <VideoPlayer src={videoUrl} />
                 </div>
-              ) : editedScene.imageBase64 ? (
-              <Image
-                src={scene.imageBase64 ? `data:image/png;base64,${scene.imageBase64}` : "/placeholder.svg"}
-                alt={`Scene ${sceneNumber}`}
-                fill
-                className="absolute inset-0 w-full h-full object-cover object-center"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.src = "/placeholder.svg";
-                }}
-              />
               ) : (
-                <Image
-                    src="/placeholder.svg"
-                    alt={`Scene ${sceneNumber}`}
-                    className="absolute inset-0 w-full h-full object-cover object-center"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.src = "/placeholder.svg";
-                    }}
-                  />
+                <GcsImage
+                  gcsUri={editedScene.imageGcsUri  || null}
+                  alt={`Scene ${sceneNumber}`}
+                  className="absolute inset-0 w-full h-full object-cover object-center"
+                />
               )}
             </div>
             <div className="grid gap-2">

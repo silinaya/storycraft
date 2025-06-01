@@ -126,7 +126,7 @@ Remember, your goal is to create a compelling and visually interesting story tha
     try {
       const cleanedText = text.replace(/\`\`\`json|\`\`\`/g, '').trim();
       const parsedScenario = JSON.parse(cleanedText);
-      
+
       // Ensure the language is set correctly
       scenario = {
         ...parsedScenario,
@@ -135,7 +135,7 @@ Remember, your goal is to create a compelling and visually interesting story tha
           code: language.code
         }
       };
-      
+
       console.log(scenario.scenario)
       console.log(scenario.characters)
       console.log(scenario.settings)
@@ -155,14 +155,14 @@ Remember, your goal is to create a compelling and visually interesting story tha
         console.log(`Generating image for scene ${index + 1}`);
         const resultJson = await generateImageRest(`${style}: ${character.description}`, "1:1");
         if (resultJson.predictions[0].raiFilteredReason) {
-            throw new Error(resultJson.predictions[0].raiFilteredReason)
+          throw new Error(resultJson.predictions[0].raiFilteredReason)
         } else {
-            console.log('Generated image base64:', resultJson.predictions[0].bytesBase64Encoded.substring(0, 50) + '...');
-            return { ...character, imageBase64: resultJson.predictions[0].bytesBase64Encoded };
+          console.log('Generated image:', resultJson.predictions[0].gcsUri);
+          return { ...character, imageGcsUri: resultJson.predictions[0].gcsUri };
         }
       } catch (error) {
         console.error('Error generating image:', error);
-        return { ...character, imageBase64: '' };
+        return { ...character, imageGcsUri: undefined };
       }
     }))
 
@@ -196,6 +196,11 @@ export async function generateStoryboard(scenario: Scenario, numScenes: number, 
   console.log('Create a storyboard')
   console.log(scenario.scenario)
   try {
+    // Create a new scenario object to ensure proper serialization
+    const newScenario: Scenario = {
+      ...scenario,
+      scenes: []
+    };
 
     const prompt = `
       You are tasked with generating a creative scenes for a short movie and creating prompts for storyboard illustrations. Follow these instructions carefully:
@@ -270,56 +275,47 @@ Remember, your goal is to create a compelling and visually interesting story tha
     try {
       const cleanedText = text.replace(/\`\`\`json|\`\`\`/g, '').trim();
       const parsedScenes = JSON.parse(cleanedText);
-      scenario.scenes = parsedScenes.scenes
-      console.log(scenario.scenes)
+      newScenario.scenes = parsedScenes.scenes
+      console.log('Server side scenes after parsing:', newScenario.scenes)
     } catch (parseError) {
       console.error('Error parsing AI response:', text)
       throw new Error(`Failed to parse AI response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`)
     }
 
-
-
-    
     // Generate images for each scene
-    const scenesWithImages = await Promise.all(scenario.scenes.map(async (scene, index) => {
+    const scenesWithImages = await Promise.all(newScenario.scenes.map(async (scene, index) => {
       try {
-        // const { images } = await generateImage({
-        //   model: vertex.image('imagen-3.0-generate-001'),
-        //   prompt: scene.imagePrompt,
-        //   n: 1,
-        //   aspectRatio: '16:9'
-        // });
         console.log(`Generating image for scene ${index + 1}`);
         let resultJson;
         if (false && scene.charactersPresent.length > 0) {
-          const presentCharacters = scenario.characters.filter(character =>
-            scene.charactersPresent.includes(character.name)  
+          const presentCharacters = newScenario.characters.filter(character =>
+            scene.charactersPresent.includes(character.name)
           );
           if (presentCharacters.length > 0) {
-             console.log(`Using character customization for characters: ${presentCharacters.map(c => c.name).join(', ')}`);
-             resultJson = await generateImageCustomizationRest(scene.imagePrompt, presentCharacters);
+            console.log(`Using character customization for characters: ${presentCharacters.map(c => c.name).join(', ')}`);
+            resultJson = await generateImageCustomizationRest(scene.imagePrompt, presentCharacters);
           } else {
-             console.warn(`Scene ${index + 1} listed characters [${scene.charactersPresent.join(', ')}] but no matching data found in charactersWithImages. Falling back to standard generation.`);
-             resultJson = await generateImageRest(scene.imagePrompt);
+            console.warn(`Scene ${index + 1} listed characters [${scene.charactersPresent.join(', ')}] but no matching data found in charactersWithImages. Falling back to standard generation.`);
+            resultJson = await generateImageRest(scene.imagePrompt);
           }
         } else {
           resultJson = await generateImageRest(scene.imagePrompt);
         }
         if (resultJson.predictions[0].raiFilteredReason) {
-            throw new Error(resultJson.predictions[0].raiFilteredReason)
+          throw new Error(resultJson.predictions[0].raiFilteredReason)
         } else {
-            console.log('Generated image base64:', resultJson.predictions[0].bytesBase64Encoded.substring(0, 50) + '...');
-            return { ...scene, imageBase64: resultJson.predictions[0].bytesBase64Encoded };
+          console.log('Generated image:', resultJson.predictions[0].gcsUri);
+          return { ...scene, imageGcsUri: resultJson.predictions[0].gcsUri };
         }
       } catch (error) {
         console.error('Error generating image:', error);
-        return { ...scene, imageBase64: '' };
+        return { ...scene, imageGcsUri: undefined };
       }
     }));
 
-    scenario.scenes = scenesWithImages
-
-    return scenario
+    newScenario.scenes = scenesWithImages
+    // Create a fresh copy to ensure proper serialization
+    return JSON.parse(JSON.stringify(newScenario))
   } catch (error) {
     console.error('Error generating scenes:', error)
     throw new Error(`Failed to generate scenes: ${error instanceof Error ? error.message : 'Unknown error'}`)

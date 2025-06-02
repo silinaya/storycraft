@@ -150,7 +150,7 @@ export function CreateTab({
               id="numScenes"
               type="number"
               min="1"
-              max="20"
+              max="8"
               value={numScenes}
               onChange={(e) => setNumScenes(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
               className="w-20"

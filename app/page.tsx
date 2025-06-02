@@ -38,7 +38,7 @@ export default function Home() {
   const [language, setLanguage] = useState<Language>(DEFAULT_LANGUAGE)
   const [logoOverlay, setLogoOverlay] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false);
-  const [numScenes, setNumScenes] = useState(8)
+  const [numScenes, setNumScenes] = useState(6)
   const [isLoading, setIsLoading] = useState(false)
   const [withVoiceOver, setWithVoiceOver] = useState(false)
   const [isVideoLoading, setIsVideoLoading] = useState(false)
@@ -315,12 +315,6 @@ export default function Home() {
       );
     } finally {
       console.log(`[Client] Generating video done`);
-      if (scenario) {
-        setScenario({
-          ...scenario,
-          scenes: scenes
-        });
-      }
       setGeneratingScenes(prev => {
         const updated = new Set(prev);
         updated.delete(index); // Remove index from generatingScenes

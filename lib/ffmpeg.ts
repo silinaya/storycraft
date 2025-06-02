@@ -5,6 +5,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { Readable, Writable } from 'stream';
+import { spawn } from 'child_process'; // For running ffprobe against a buffer
 
 const USE_SIGNED_URL = process.env.USE_SIGNED_URL === "true";
 const GCS_VIDEOS_STORAGE_URI = process.env.GCS_VIDEOS_STORAGE_URI || '';
@@ -894,4 +896,146 @@ export async function exportMovie(
     // Clean up temporary files
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
+}
+
+/**
+ * Concatenates a music audio buffer twice with a fade-out/fade-in transition,
+ * and returns the resulting audio buffer.
+ *
+ * @param inputAudioBuffer The input music audio data as a Buffer.
+ * @param inputFormat The format of the input audio buffer (e.g., 'mp3', 'wav', 'aac'). This is crucial for FFmpeg to interpret the buffer correctly.
+ * @param fadeDuration The duration of the fade-out and fade-in in seconds (default: 2).
+ * @returns A Promise that resolves with the resulting audio Buffer, or rejects on error.
+ */
+export async function concatenateMusicWithFade(
+    inputAudioBuffer: Buffer,
+    inputFormat: string, // e.g., 'mp3', 'wav'
+    fadeDuration: number = 2
+): Promise<Buffer> {
+    return new Promise<Buffer>(async (resolve, reject) => {
+        // --- Step 1: Get the duration of the input music buffer ---
+        let musicDuration: number;
+        try {
+            musicDuration = await getAudioDurationFromBuffer(inputAudioBuffer, inputFormat);
+            if (musicDuration <= 0) {
+                return reject(new Error('Could not determine music duration or duration is zero.'));
+            }
+        } catch (error) {
+            return reject(new Error(`Failed to get music duration from buffer: ${error}`));
+        }
+
+        const fadeOutStartTime = musicDuration - fadeDuration;
+
+        if (fadeOutStartTime < 0) {
+            return reject(new Error('Fade duration is longer than the music buffer duration. Adjust fadeDuration.'));
+        }
+
+        const outputBuffers: Buffer[] = [];
+        const outputStream = new Writable({
+            write(chunk, encoding, callback) {
+                outputBuffers.push(chunk);
+                callback();
+            },
+        });
+
+        // Create readable streams from the input buffer for each FFmpeg input
+        const inputBufferStream1 = Readable.from(inputAudioBuffer);
+        const inputBufferStream2 = Readable.from(inputAudioBuffer);
+
+        ffmpeg()
+            // Input 1 (for the first instance with fade-out)
+            .input(inputBufferStream1)
+            .inputFormat(inputFormat) // Crucial: tell FFmpeg the format of the incoming buffer stream
+            // Input 2 (for the second instance with fade-in)
+            .input(inputBufferStream2)
+            .inputFormat(inputFormat) // Crucial: tell FFmpeg the format of the incoming buffer stream
+            .complexFilter([
+                // Fade-out for the first instance
+                {
+                    filter: 'afade',
+                    options: {
+                        type: 'out',
+                        start_time: fadeOutStartTime,
+                        duration: fadeDuration,
+                    },
+                    inputs: '[0:a]', // Audio stream from the first input
+                    outputs: 'a0',
+                },
+                // Fade-in for the second instance
+                {
+                    filter: 'afade',
+                    options: {
+                        type: 'in',
+                        start_time: 0, // Fade-in from the very beginning
+                        duration: fadeDuration,
+                    },
+                    inputs: '[1:a]', // Audio stream from the second input
+                    outputs: 'a1',
+                },
+                // Concatenate the two faded audio streams
+                {
+                    filter: 'concat',
+                    options: {
+                        n: 2, // Two input streams
+                        v: 0, // No video streams
+                        a: 1, // One audio stream
+                    },
+                    inputs: ['a0', 'a1'],
+                    outputs: 'out',
+                },
+            ], 'out') // Specify 'out' as the final output stream for mapping
+            .outputOptions([
+                '-f wav', // Output format (e.g., 'mp3'). You can change this if you want a different output format.
+                '-map [out]' // Map the named output stream
+            ])
+            .on('start', (commandLine: string) => {
+                console.log('FFmpeg process started with command:', commandLine);
+            })
+            .on('progress', (progress: any) => {
+                // console.log('Processing: ' + progress.percent + '% done'); // Progress might be tricky with buffer input/output
+            })
+            .on('error', (err: Error, stdout: string | null, stderr: string | null) => {
+                console.error('FFmpeg error:', err.message);
+                console.error('FFmpeg stdout:', stdout);
+                console.error('FFmpeg stderr:', stderr);
+                reject(err);
+            })
+            .on('end', () => {
+                console.log('Concatenation finished. Output buffer created.');
+                resolve(Buffer.concat(outputBuffers));
+            })
+            .pipe(outputStream, { end: true }); // Pipe FFmpeg's output to our Writable stream
+    });
+}
+
+/**
+ * Helper function to get the duration of an audio buffer using ffprobe.
+ * This corrected version uses the fluent-ffmpeg's built-in ffprobe method.
+ *
+ * @param audioBuffer The audio data as a Buffer.
+ * @param inputFormat The format of the audio buffer (e.g., 'mp3', 'wav', 'aac').
+ * @returns A Promise that resolves with the duration in seconds, or rejects on error.
+ */
+function getAudioDurationFromBuffer(audioBuffer: Buffer, inputFormat: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+        const audioStream = Readable.from(audioBuffer);
+
+        ffmpeg()
+            .input(audioStream)
+            .inputFormat(inputFormat)
+            .on('error', (err) => {
+                reject(new Error(`ffprobe error: ${err.message}`));
+            })
+            .ffprobe((err, data) => {
+                if (err) {
+                    return reject(new Error(`ffprobe failed: ${err.message}`));
+                }
+                const duration = data.format.duration;
+                if (typeof duration === 'number') {
+                    resolve(duration);
+                } else {
+                    reject(new Error('Could not determine duration from ffprobe metadata.'));
+                }
+            });
+    });
 }

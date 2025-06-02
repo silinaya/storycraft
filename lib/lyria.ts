@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { GoogleAuth } from 'google-auth-library';
 import { v4 as uuidv4 } from 'uuid';
+import { concatenateMusicWithFade } from './ffmpeg';
 
 const USE_SIGNED_URL = process.env.USE_SIGNED_URL === "true";
 const GCS_VIDEOS_STORAGE_URI = process.env.GCS_VIDEOS_STORAGE_URI || '';
@@ -65,6 +66,8 @@ export async function generateMusicRest(prompt: string): Promise<string> {
       const audioContent = jsonResult.predictions[0].bytesBase64Encoded;
       // Decode base64 to buffer
       const audioBuffer = Buffer.from(audioContent, 'base64');
+      const outputBuffer = await concatenateMusicWithFade(audioBuffer, 'wav')
+      
 
       // Define the directory where you want to save the audio files
       const publicDir = path.join(process.cwd(), 'public');
@@ -87,7 +90,7 @@ export async function generateMusicRest(prompt: string): Promise<string> {
         const bucket = storage.bucket(bucketName);
         const file = bucket.file(destinationPath);
 
-        await file.save(audioBuffer, {
+        await file.save(outputBuffer, {
           metadata: {
             contentType: `audio/wav`, // Set the correct content type
           }
@@ -103,7 +106,7 @@ export async function generateMusicRest(prompt: string): Promise<string> {
       } else {
         // Write the audio content to a file
         const filePath = path.join(outputDir, fileName);
-        fs.writeFileSync(filePath, audioBuffer);
+        fs.writeFileSync(filePath, outputBuffer);
         musicUrl = filePath.split('public/')[1];
       }
       return musicUrl;

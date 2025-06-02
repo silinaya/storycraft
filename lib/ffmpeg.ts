@@ -660,7 +660,7 @@ async function concatenateVideos(
     .format('mp4')  // Explicitly set output format
     .outputOptions([
       '-c:v libx264', // Use H.264 codec for video
-      '-preset medium', // Encoding preset
+      '-preset veryfast', // Encoding preset
       '-crf 23',      // Constant Rate Factor (quality)
       '-c:a aac',     // Use AAC codec for audio
       '-b:a 192k',    // Audio bitrate

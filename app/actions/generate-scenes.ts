@@ -229,7 +229,7 @@ ${scenario.mood}
 2. Generate ${numScenes} creative scenes to create a storyboard illustrating the scenario. Follow these guidelines for the scenes:
  a. For each scene, provide:
  1. A detailed visual description for AI image generation (imagePrompt), the style should be ${style}. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your image prompts.  Always use indefinite articles when describing character(s). No children.
- 2. A video prompt, focusing on the movement of the characters, objects, in the scene. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your image prompts.  Always use indefinite articles when describing character(s). No children.
+ 2. A video prompt, focusing on the movement of the characters, objects, in the scene, the style should be ${style}. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your video prompts.  Always use indefinite articles when describing character(s). No children.
  3. A scene description  in ${language.name} explaining what happens (description). You can use the character(s) name(s) in your descriptions.
  4. A short, narrator voiceover text in ${language.name}. One full sentence, 6s max. (voiceover). You can use the character(s) name(s) in your vocieovers. 
 a. Each image prompt should describe a key scene or moment from your scenario.
@@ -247,8 +247,8 @@ Here's an example of how your output should be structured:
 {
  "scenes": [
  {
-  "imagePrompt": [A detailed visual description for AI image generation, the style should always be cinematic and photorealistic],
-  "videoPrompt": [A video prompt, focusing on the movement of the characters, objects, in the scene],
+  "imagePrompt": [A detailed visual description for AI image generation, include the style ${style} in the prompt],
+  "videoPrompt": [A video prompt, focusing on the movement of the characters, objects, in the scene, include the style ${style} in the prompt],
   "description": [A scene description explaining what happens],
   "voiceover": [A short, narrator voiceover text. One full sentence, 6s max.],
   "charactersPresent": [An array list of names of characters visually present in the scene]

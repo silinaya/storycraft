@@ -112,7 +112,8 @@ export async function generateSceneVideo(prompt: string, imageGcsUri: string): P
             parameters: {
               storageUri: GCS_VIDEOS_STORAGE_URI,
               sampleCount: 1,
-              aspectRatio: "16:9"
+              aspectRatio: "16:9",
+              generateAudio: false,
             },
           }),
         }

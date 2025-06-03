@@ -1,19 +1,14 @@
 'use client'
 
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Button } from '@/components/ui/button'
 import { VideoPlayer } from "./video-player"
-import { Loader2, Video } from 'lucide-react'
+import { Download, Loader2 } from 'lucide-react'
+import { useState } from 'react'
 
 interface VideoTabProps {
   videoUri: string | null
   vttUri: string | null
   isVideoLoading: boolean
-  withVoiceOver: boolean
-  setWithVoiceOver: (value: boolean) => void
-  onEditVideo: () => Promise<void>
-  scenes: Array<{ videoUri?: string | Promise<string> }>
-  generatingScenes: Set<number>
   language: { name: string; code: string }
 }
 
@@ -21,50 +16,60 @@ export function VideoTab({
   videoUri,
   vttUri,
   isVideoLoading,
-  withVoiceOver,
-  setWithVoiceOver,
-  onEditVideo,
-  scenes,
-  generatingScenes,
   language
 }: VideoTabProps) {
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  const handleDownload = async () => {
+    if (!videoUri) return
+
+    try {
+      setIsDownloading(true)
+      
+      // Create a temporary anchor element
+      const link = document.createElement('a')
+      link.href = videoUri
+      
+      // Extract filename from URL or use a default name
+      const filename = videoUri.split('/').pop() || 'video.mp4'
+      link.download = filename
+      
+      // Append to body, click, and remove
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (error) {
+      console.error('Error downloading video:', error)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
   return (
     <div className="space-y-8">
-      <div className="flex justify-end space-x-4">
-        <Button
-          onClick={onEditVideo}
-          disabled={isVideoLoading || scenes.length === 0 || !scenes.every((scene) => typeof scene.videoUri === 'string') || generatingScenes.size > 0} 
-          className="bg-purple-500 text-primary-foreground hover:bg-primary/90"
-        >
-          {isVideoLoading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Editing Final Video...
-            </>
-          ) : (
-            <>
-              <Video className="mr-2 h-4 w-4" />
-              Edit Final Video
-            </>
-          )}
-        </Button>
-        <div className="flex items-center space-x-2">
-          <Checkbox 
-            id="withVocieover" 
-            checked={withVoiceOver} 
-            onCheckedChange={(checked) => {
-              const isChecked = typeof checked === "boolean" ? checked : false;
-              setWithVoiceOver(isChecked);
-            }} 
-          />
-          <label
-            htmlFor="withVocieover"
-            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+      {/* Header with Download button */}
+      <div className="flex justify-end">
+        {videoUri && (
+          <Button
+            onClick={handleDownload}
+            disabled={isDownloading}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
           >
-            Voiceover
-          </label>
-        </div>
+            {isDownloading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Downloading...
+              </>
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                Download Movie
+              </>
+            )}
+          </Button>
+        )}
       </div>
+
       {videoUri && (
         <div className="mb-8">
           <VideoPlayer src={videoUri} vttSrc={vttUri} language={language} />

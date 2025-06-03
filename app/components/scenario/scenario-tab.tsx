@@ -75,7 +75,7 @@ export function ScenarioTab({ scenario, onGenerateStoryBoard, isLoading, onScena
                             ) : (
                                 <>
                                 <LayoutGrid className="mr-2 h-4 w-4" />
-                                Generate Storyboard
+                                Generate Storyboard with Imagen 4.0
                                 </>
                             )}
                         </Button>
@@ -133,14 +133,14 @@ export function ScenarioTab({ scenario, onGenerateStoryBoard, isLoading, onScena
                             <h3 className="text-xl font-bold">Settings</h3>
                         </div>
                         {scenario.settings.map((setting) => (
-                            <>
+                            <div key={setting.name}>
                                 <div className="col-span-1">
                                     <h4 className="text-lg">{setting.name}</h4>
                                 </div>
                                 <div className="col-span-2">
                                     <p>{setting.description}</p>
                                 </div>
-                            </>
+                            </div>
                         ))}
                         <div className="col-span-1">
                             <h3 className="text-xl font-bold">Music</h3>

@@ -531,11 +531,6 @@ export default function Home() {
             videoUri={videoUri}
             vttUri={vttUri}
             isVideoLoading={isVideoLoading}
-            withVoiceOver={withVoiceOver}
-            setWithVoiceOver={setWithVoiceOver}
-            onEditVideo={handleEditVideo}
-            scenes={scenes}
-            generatingScenes={generatingScenes}
             language={scenario?.language || DEFAULT_LANGUAGE}
           />
         )}

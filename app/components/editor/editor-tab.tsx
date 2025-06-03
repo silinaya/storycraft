@@ -25,11 +25,18 @@ interface EditorTabProps {
     isExporting?: boolean
 }
 
-const TIMELINE_DURATION = 60 // Total timeline duration in seconds
+const TIMELINE_DURATION = 65 // Total timeline duration in seconds
 const MARKER_INTERVAL = 5 // Time marker interval in seconds
 const SCENE_DURATION = 8 // Duration of each scene in seconds
 const CLIP_PADDING = 2 // Padding between clips in pixels
 const FADE_DURATION = 0.15; // 150ms for audio fade-in/out
+
+// Format time in mm:SS format
+const formatTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = Math.floor(seconds % 60)
+    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
+}
 
 export function EditorTab({
     scenario,
@@ -791,10 +798,6 @@ export function EditorTab({
             {/* Timeline */}
             <div className="space-y-2">
                 {/* Timeline Header */}
-                <div className="flex items-center justify-between px-2">
-                    <h3 className="text-sm font-medium text-gray-700">Timeline</h3>
-                </div>
-
                 <div
                     ref={timelineRef}
                     className="relative w-full bg-gray-100 rounded-lg cursor-pointer"
@@ -809,7 +812,7 @@ export function EditorTab({
                             {Array.from({ length: TIMELINE_DURATION / MARKER_INTERVAL + 1 }).map((_, i) => (
                                 <div key={i} className="relative" style={{ left: i === 0 ? '0' : i === TIMELINE_DURATION / MARKER_INTERVAL ? 'auto' : undefined }}>
                                     <div className="absolute -top-4 left-0 transform -translate-x-1/2 select-none">
-                                        {i * MARKER_INTERVAL}s
+                                        {formatTime(i * MARKER_INTERVAL)}
                                     </div>
                                     <div className="absolute top-0 left-0 w-px h-6 bg-gray-300" />
                                 </div>

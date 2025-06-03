@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { LayoutGrid, Loader2 } from 'lucide-react'
+import { BookOpen, Loader2 } from 'lucide-react'
 import { type Language } from '../../types'
 import { StyleSelector, type Style } from "./style-selector"
 
@@ -95,8 +95,8 @@ export function CreateTab({
             </>
           ) : (
             <>
-              <LayoutGrid className="mr-2 h-4 w-4" />
-              Generate Scenario
+              <BookOpen className="mr-2 h-4 w-4" />
+              Generate Scenario with Gemini 2.5 Flash
             </>
           )}
         </Button>

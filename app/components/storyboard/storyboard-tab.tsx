@@ -217,7 +217,7 @@ export function StoryboardTab({
           ) : (
             <>
               <Video className="mr-2 h-4 w-4" />
-              Generate Videos
+              Generate Videos with Veo 3.0
             </>
           )}
         </Button>

@@ -66,7 +66,7 @@ export async function generateMusicRest(prompt: string): Promise<string> {
       const audioContent = jsonResult.predictions[0].bytesBase64Encoded;
       // Decode base64 to buffer
       const audioBuffer = Buffer.from(audioContent, 'base64');
-      const outputBuffer = await concatenateMusicWithFade(audioBuffer, 'wav')
+      const outputBuffer = await concatenateMusicWithFade(audioBuffer, 'mp3')
       
 
       // Define the directory where you want to save the audio files
@@ -78,7 +78,7 @@ export async function generateMusicRest(prompt: string): Promise<string> {
 
       // Generate a unique filename, e.g., using a timestamp or a UUID
       const uuid = uuidv4();
-      const fileName = `music-${uuid}.wav`;
+      const fileName = `music-${uuid}.mp3`;
 
       // Return the relative file path (for serving the file)
       let musicUrl: string;
@@ -92,7 +92,7 @@ export async function generateMusicRest(prompt: string): Promise<string> {
 
         await file.save(outputBuffer, {
           metadata: {
-            contentType: `audio/wav`, // Set the correct content type
+            contentType: `audio/mpeg`, // Set the correct content type for MP3
           }
         });
 

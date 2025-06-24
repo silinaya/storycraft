@@ -102,7 +102,7 @@ export async function generateSceneVideo(prompt: string, imageGcsUri: string): P
           body: JSON.stringify({
             instances: [
               {
-                prompt: prompt,
+                prompt: prompt + '\nDialog: none\nSubtitles: off',
                 image: {
                   gcsUri: imageGcsUri,
                   mimeType: "png",
@@ -113,7 +113,7 @@ export async function generateSceneVideo(prompt: string, imageGcsUri: string): P
               storageUri: GCS_VIDEOS_STORAGE_URI,
               sampleCount: 1,
               aspectRatio: "16:9",
-              generateAudio: false,
+              generateAudio: true,
             },
           }),
         }

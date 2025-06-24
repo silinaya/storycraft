@@ -51,7 +51,7 @@ ${pitch}
 - Romantic
 - Sad
 
-5. Generate a short description of the music that will be used in the video. No references to the story, no references to known artists or songs.
+5. Generate a short description of the music, in English only, that will be used in the video. No references to the story, no references to known artists or songs.
 
 6. After creating the scenario, generate ${numScenes} creative scenes to create a storyboard illustrating the scenario. Follow these guidelines for the scenes:
  a. For each scene, provide:

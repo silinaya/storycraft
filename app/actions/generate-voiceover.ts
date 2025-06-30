@@ -7,12 +7,13 @@ export async function generateVoiceover(
     scenes: Array<{
         voiceover: string;
       }>,  
-      language: Language
+      language: Language,
+      voiceName?: string
 ): Promise<string[]> {
-  console.log('Genrating voiceover')
+  console.log('Generating voiceover with voice:', voiceName || 'default');
   try {
     const speachAudioFiles = await Promise.all(scenes.map(async (scene) => {
-        const filename = await tts(scene.voiceover, language.code);
+        const filename = await tts(scene.voiceover, language.code, voiceName);
         return { filename, text: scene.voiceover };
     }));
     const voiceoverAudioUrls = speachAudioFiles.map(r => r.filename);

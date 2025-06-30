@@ -6,7 +6,7 @@ import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { generateScenes, generateStoryboard } from './actions/generate-scenes'
 import { editVideo, exportMovieAction } from './actions/generate-video'
-import { regenerateImage } from './actions/regenerate-image'
+import { regenerateImage, regenerateCharacterImage } from './actions/regenerate-image'
 import { resizeImage } from './actions/resize-image'
 import { saveImageToPublic } from './actions/upload-image'
 import { CreateTab } from './components/create/create-tab'
@@ -18,6 +18,7 @@ import { Scenario, Scene, type Language, TimelineLayer } from './types'
 import { EditorTab } from './components/editor/editor-tab'
 import { generateMusic } from "./actions/generate-music"
 import { generateVoiceover } from "./actions/generate-voiceover"
+import { Voice } from './components/editor/voice-selection-dialog'
 
 const styles: Style[] = [
   { name: "Photographic", image: "/styles/cinematic.jpg" },
@@ -45,6 +46,7 @@ export default function Home() {
   const [scenario, setScenario] = useState<Scenario>()
   const [scenes, setScenes] = useState<Array<Scene>>([])
   const [generatingScenes, setGeneratingScenes] = useState<Set<number>>(new Set());
+  const [generatingCharacterImages, setGeneratingCharacterImages] = useState<Set<number>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [videoUri, setVideoUri] = useState<string | null>(null)
   const [vttUri, setVttUri] = useState<string | null>(null)
@@ -52,6 +54,7 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(0)
   const [isGeneratingMusic, setIsGeneratingMusic] = useState(false)
   const [isGeneratingVoiceover, setIsGeneratingVoiceover] = useState(false)
+  const [selectedVoice, setSelectedVoice] = useState<Voice | null>(null)
   const FALLBACK_URL = "https://videos.pexels.com/video-files/4276282/4276282-hd_1920_1080_25fps.mp4"
 
   useEffect(() => {
@@ -102,6 +105,41 @@ export default function Home() {
     }
   }
 
+  const handleRegenerateCharacterImage = async (characterIndex: number, description: string) => {
+    if (!scenario) return;
+    
+    setGeneratingCharacterImages(prev => new Set([...prev, characterIndex]));
+    setErrorMessage(null)
+    try {
+      // Regenerate character image using the updated description
+      const { imageGcsUri } = await regenerateCharacterImage(`${style}: ${description}`);
+      
+      // Update the character with the new image AND the updated description
+      const updatedCharacters = [...scenario.characters];
+      updatedCharacters[characterIndex] = {
+        ...updatedCharacters[characterIndex],
+        description: description, // Preserve the updated description
+        imageGcsUri
+      };
+      
+      const updatedScenario = {
+        ...scenario,
+        characters: updatedCharacters
+      };
+      
+      setScenario(updatedScenario);
+    } catch (error) {
+      console.error("Error regenerating character image:", error)
+      setErrorMessage(`Failed to regenerate character image: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setGeneratingCharacterImages(prev => {
+        const updated = new Set(prev);
+        updated.delete(characterIndex);
+        return updated;
+      });
+    }
+  }
+
   const handleEditVideo = async () => {
     setIsVideoLoading(true)
     setErrorMessage(null)
@@ -121,7 +159,8 @@ export default function Home() {
           scenario.mood,
           withVoiceOver,
           scenario.language,
-          scenario.logoOverlay
+          scenario.logoOverlay,
+          selectedVoice?.name
         );
         if (result.success) {
           setVideoUri(result.videoUrl)
@@ -209,15 +248,20 @@ export default function Home() {
     setActiveTab("editor")
   };
 
-  const handleGenerateVoiceover = async () => {
+  const handleGenerateVoiceover = async (voice?: Voice) => {
     if (!scenario) return
     setIsGeneratingVoiceover(true)
     setErrorMessage(null)
     try {
+      // Set the selected voice for future video generation
+      if (voice) {
+        setSelectedVoice(voice)
+      }
+      
       const scenesVoiceovers = scenario.scenes.map((scene) => ({
         voiceover: scene.voiceover
       }))
-      const voiceoverAudioUrls = await generateVoiceover(scenesVoiceovers, scenario.language)
+      const voiceoverAudioUrls = await generateVoiceover(scenesVoiceovers, scenario.language, voice?.name)
       const updatedScenes = scenes.map((scene, index) => ({
         ...scene,
         voiceoverAudioUri: voiceoverAudioUrls[index]
@@ -235,17 +279,27 @@ export default function Home() {
     }
   }
 
-  const handleGenerateMusic = async () => {
+  const handleGenerateMusic = async (musicParams?: { description: string }) => {
     if (!scenario) return
     setIsGeneratingMusic(true)
     setErrorMessage(null)
     try {
-      const musicUrl = await generateMusic(scenario?.music)
-      const updatedScenario = {
-        ...scenario,
+      // Update scenario with new music description if provided
+      let updatedScenario = scenario
+      if (musicParams) {
+        updatedScenario = {
+          ...scenario,
+          music: musicParams.description
+        }
+        setScenario(updatedScenario)
+      }
+      
+      const musicUrl = await generateMusic(updatedScenario.music)
+      const finalScenario = {
+        ...updatedScenario,
         musicUrl: musicUrl
       }
-      setScenario(updatedScenario)
+      setScenario(finalScenario)
       console.log(musicUrl)
     } catch (error) {
       console.error('Error generating music:', error)
@@ -442,6 +496,38 @@ export default function Home() {
     setScenario(updatedScenario);
   };
 
+  const handleRemoveVoiceover = (sceneIndex: number) => {
+    if (!scenario) return;
+    
+    // Create updated scenes with voiceover removed from the specific scene
+    const updatedScenes = scenario.scenes.map((scene, index) => {
+      if (index === sceneIndex) {
+        return {
+          ...scene,
+          voiceoverAudioUri: undefined
+        };
+      }
+      return scene;
+    });
+    
+    // Update both scenes and scenario
+    setScenes(updatedScenes);
+    setScenario({
+      ...scenario,
+      scenes: updatedScenes
+    });
+  };
+
+  const handleRemoveMusic = () => {
+    if (!scenario) return;
+    
+    // Remove music from scenario
+    setScenario({
+      ...scenario,
+      musicUrl: undefined
+    });
+  };
+
   return (
     <main className="container mx-auto p-8 min-h-screen bg-background flex flex-col">
       <div className="flex items-center justify-center gap-2 mb-8">
@@ -487,6 +573,8 @@ export default function Home() {
             onGenerateStoryBoard={handleGenerateStoryBoard}
             isLoading={isLoading}
             onScenarioUpdate={handleScenarioUpdate}
+            onRegenerateCharacterImage={handleRegenerateCharacterImage}
+            generatingCharacterImages={generatingCharacterImages}
           />
         )}
 
@@ -523,6 +611,8 @@ export default function Home() {
             isGeneratingVoiceover={isGeneratingVoiceover}
             onExportMovie={handleExportMovie}
             isExporting={isVideoLoading}
+            onRemoveVoiceover={handleRemoveVoiceover}
+            onRemoveMusic={handleRemoveMusic}
           />
         )}
 

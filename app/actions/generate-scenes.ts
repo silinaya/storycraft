@@ -2,6 +2,7 @@
 
 import { generateText/*, experimental_generateImage as generateImage*/ } from 'ai'
 import { createVertex } from '@ai-sdk/google-vertex'
+import { GoogleGenerativeAIProviderOptions } from '@ai-sdk/google';
 import { generateImageCustomizationRest, generateImageRest } from '@/lib/imagen';
 
 import { Scene, Scenario, Language } from "../types"
@@ -84,13 +85,13 @@ Here's an example of how your output should be structured:
    "code": "${language.code}"
  },
  "characters": [
-  {"name": [character 1 name], "description": [character 1 description]},
-  {"name": [character 2 name], "description": [character 2 description]},
+  {"name": [character 1 name], "description": [character 1 description in ${language.name}]},
+  {"name": [character 2 name], "description": [character 2 description in ${language.name}]},
   [...]
  ],
  "settings": [
-  {"name": [setting 1 name], "description": [setting 1 description]},
-  {"name": [setting 2 name], "description": [setting 2 description]},
+  {"name": [setting 1 name], "description": [setting 1 description in ${language.name}]},
+  {"name": [setting 2 name], "description": [setting 2 description in ${language.name}]},
   [...]
  ],
  "scenes": [
@@ -111,6 +112,15 @@ Remember, your goal is to create a compelling and visually interesting story tha
     console.log('Create a storyboard')
     const { text } = await generateText({
       model: vertex("gemini-2.5-flash-preview-05-20"),
+      providerOptions: {
+        google: {
+          // Options are nested under 'google' for Vertex provider
+          thinkingConfig: {
+            includeThoughts: false,
+            // thinkingBudget: 2048, // Optional
+          },
+        } satisfies GoogleGenerativeAIProviderOptions,
+      },
       prompt,
       temperature: 1
     })
@@ -228,8 +238,8 @@ ${scenario.mood}
 
 2. Generate ${numScenes} creative scenes to create a storyboard illustrating the scenario. Follow these guidelines for the scenes:
  a. For each scene, provide:
- 1. A detailed visual description for AI image generation (imagePrompt), the style should be ${style}. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your image prompts.  Always use indefinite articles when describing character(s). No children.
- 2. A video prompt, focusing on the movement of the characters, objects, in the scene, the style should be ${style}. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your video prompts.  Always use indefinite articles when describing character(s). No children.
+ 1. A detailed visual description for AI image generation (imagePrompt) in ${language.name}, the style should be ${style}. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your image prompts.  Always use indefinite articles when describing character(s). No children.
+ 2. A video prompt in ${language.name}, focusing on the movement of the characters, objects, in the scene, the style should be ${style}. Always use the FULL character(s) description(s) in your images prompts. Do NOT use the character(s) name(s) in your video prompts.  Always use indefinite articles when describing character(s). No children.
  3. A scene description  in ${language.name} explaining what happens (description). You can use the character(s) name(s) in your descriptions.
  4. A short, narrator voiceover text in ${language.name}. One full sentence, 6s max. (voiceover). You can use the character(s) name(s) in your vocieovers. 
 a. Each image prompt should describe a key scene or moment from your scenario.
@@ -262,6 +272,15 @@ Remember, your goal is to create a compelling and visually interesting story tha
 
     const { text } = await generateText({
       model: vertex("gemini-2.5-flash-preview-05-20"),
+      providerOptions: {
+        google: {
+          // Options are nested under 'google' for Vertex provider
+          thinkingConfig: {
+            includeThoughts: false,
+            // thinkingBudget: 2048, // Optional
+          },
+        } satisfies GoogleGenerativeAIProviderOptions,
+      },
       prompt,
       temperature: 1
     })

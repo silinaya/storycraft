@@ -18,3 +18,19 @@ export async function regenerateImage(prompt: string) {
   }
 }
 
+export async function regenerateCharacterImage(prompt: string) {
+  try {
+    console.log('Regenerating character image with prompt:', prompt);
+    const resultJson = await generateImageRest(prompt, "1:1", false);
+    if (resultJson.predictions[0].raiFilteredReason) {
+      throw new Error(resultJson.predictions[0].raiFilteredReason)
+    } else {
+      console.log('Generated character image:', resultJson.predictions[0].gcsUri);
+      return { imageGcsUri: resultJson.predictions[0].gcsUri };
+    }
+  } catch (error) {
+    console.error('Error generating character image:', error);
+    return { imageGcsUri: undefined };
+  }
+}
+

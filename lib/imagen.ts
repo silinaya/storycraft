@@ -32,7 +32,7 @@ interface GenerateImageResponse {
   }>;
 }
 
-export async function generateImageRest(prompt: string, aspectRatio?: string): Promise<GenerateImageResponse> {
+export async function generateImageRest(prompt: string, aspectRatio?: string, enhancePrompt?: boolean): Promise<GenerateImageResponse> {
   const token = await getAccessToken();
   const maxRetries = 5; // Maximum number of retries
   const initialDelay = 1000; // Initial delay in milliseconds (1 second)
@@ -61,6 +61,7 @@ export async function generateImageRest(prompt: string, aspectRatio?: string): P
               aspectRatio: aspectRatio ? aspectRatio : "16:9",
               includeRaiReason: true,
               storageUri: GCS_VIDEOS_STORAGE_URI,
+              enhancePrompt: enhancePrompt !== undefined ? enhancePrompt : true,
             },
           }),
         }

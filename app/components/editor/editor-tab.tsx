@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button'
-import { Upload, Film, Loader2 } from 'lucide-react'
+import { Upload, Film, Loader2, X } from 'lucide-react'
 import Image from 'next/image'
 import { useEffect, useRef, useState } from 'react'
 import { Scenario, TimelineItem } from '../../types'
@@ -7,6 +7,8 @@ import { AudioWaveform } from './audio-wave-form'
 import { VideoThumbnail } from './video-thumbnail'
 import { exportMovieAction } from '@/app/actions/generate-video'
 import { TimelineLayer } from '@/app/types'
+import { VoiceSelectionDialog, Voice } from './voice-selection-dialog'
+import { MusicSelectionDialog, MusicParams } from './music-selection-dialog'
 
 interface EditorTabProps {
     scenario: Scenario
@@ -17,12 +19,14 @@ interface EditorTabProps {
     setLogoOverlay: (logo: string | null) => void
     onLogoUpload: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>
     onLogoRemove: () => void
-    onGenerateMusic: () => Promise<void>
+    onGenerateMusic: (params?: MusicParams) => Promise<void>
     isGeneratingMusic?: boolean
-    onGenerateVoiceover: () => Promise<void>
+    onGenerateVoiceover: (voice?: Voice) => Promise<void>
     isGeneratingVoiceover?: boolean
     onExportMovie: (layers: TimelineLayer[]) => Promise<void>
     isExporting?: boolean
+    onRemoveVoiceover?: (sceneIndex: number) => void
+    onRemoveMusic?: () => void
 }
 
 const TIMELINE_DURATION = 65 // Total timeline duration in seconds
@@ -53,6 +57,8 @@ export function EditorTab({
     isGeneratingVoiceover = false,
     onExportMovie,
     isExporting = false,
+    onRemoveVoiceover,
+    onRemoveMusic,
 }: EditorTabProps) {
     const timelineRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -69,6 +75,12 @@ export function EditorTab({
     const videoRef = useRef<HTMLVideoElement>(null)
     const [currentVideoUrl, setCurrentVideoUrl] = useState<string | null>(null)
     
+    // Voice selection dialog state
+    const [isVoiceDialogOpen, setIsVoiceDialogOpen] = useState(false)
+    
+    // Music selection dialog state
+    const [isMusicDialogOpen, setIsMusicDialogOpen] = useState(false)
+    
     // Audio-related refs
     const audioContextRef = useRef<AudioContext | null>(null)
     const audioBuffersRef = useRef<Map<string, AudioBuffer>>(new Map())
@@ -82,6 +94,35 @@ export function EditorTab({
 
     const handleLogoClick = () => {
         fileInputRef.current?.click()
+    }
+
+    // Voice selection handlers
+    const handleOpenVoiceDialog = () => {
+        setIsVoiceDialogOpen(true)
+    }
+
+    const handleCloseVoiceDialog = () => {
+        setIsVoiceDialogOpen(false)
+    }
+
+    const handleVoiceSelect = async (voice: Voice) => {
+        setIsVoiceDialogOpen(false)
+        await onGenerateVoiceover(voice)
+    }
+
+    // Music selection handlers
+    const handleOpenMusicDialog = () => {
+        setIsMusicDialogOpen(true)
+    }
+
+    const handleCloseMusicDialog = () => {
+        setIsMusicDialogOpen(false)
+    }
+
+    const handleMusicGenerate = async (params: MusicParams) => {
+        setIsMusicDialogOpen(false)
+        // Call the music generation function with the music parameters
+        await onGenerateMusic(params)
     }
 
     // Calculate the scale factor to fit all scenes within the timeline
@@ -869,13 +910,31 @@ export function EditorTab({
                                                             className="w-full h-full"
                                                         />
                                                     ) : layer.type === 'voiceover' && hasContent ? (
-                                                        <div className="w-full h-full bg-green-500/10 border border-green-500/30 rounded p-1">
+                                                        <div className="w-full h-full bg-green-500/10 border border-green-500/30 rounded p-1 relative">
                                                             <AudioWaveform
                                                                 src={item.content!}
                                                                 className="w-full h-full"
                                                                 color="bg-green-500"
                                                                 duration={item.duration}
                                                             />
+                                                            {/* Remove button - only show on hover */}
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    // Extract scene index from voiceover item id (format: voiceover-{index})
+                                                                    const sceneIndex = parseInt(item.id.replace('voiceover-', ''));
+                                                                    if (!isNaN(sceneIndex) && onRemoveVoiceover) {
+                                                                        onRemoveVoiceover(sceneIndex);
+                                                                    }
+                                                                }}
+                                                                className="absolute top-0 right-0 w-6 h-6 p-0 bg-red-500 hover:bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                title="Remove voiceover"
+                                                            >
+                                                                <X className="h-3 w-3" />
+                                                                <span className="sr-only">Remove voiceover</span>
+                                                            </Button>
                                                         </div>
                                                     ) : layer.type === 'voiceover' && !hasContent ? (
                                                         <div className="w-full h-full flex items-center justify-center bg-gray-100 border border-gray-200 rounded p-1">
@@ -884,9 +943,9 @@ export function EditorTab({
                                                                 size="sm"
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    onGenerateVoiceover();
+                                                                    handleOpenVoiceDialog();
                                                                 }}
-                                                                    disabled={isGeneratingVoiceover}
+                                                                disabled={isGeneratingVoiceover}
                                                                 className="bg-black/50 hover:bg-green-500 hover:text-white flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                                             >
                                                                 {isGeneratingVoiceover ? (
@@ -905,13 +964,29 @@ export function EditorTab({
                                                             </Button>
                                                         </div>
                                                     ) : layer.type === 'music' && hasContent ? (
-                                                        <div className="w-full h-full bg-green-500/10 border border-green-500/30 rounded p-1">
+                                                        <div className="w-full h-full bg-green-500/10 border border-green-500/30 rounded p-1 relative">
                                                             <AudioWaveform
                                                                 src={item.content!}
                                                                 className="w-full h-full"
                                                                 color="bg-green-500"
                                                                 duration={item.duration}
                                                             />
+                                                            {/* Remove button - only show on hover */}
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (onRemoveMusic) {
+                                                                        onRemoveMusic();
+                                                                    }
+                                                                }}
+                                                                className="absolute top-0 right-0 w-6 h-6 p-0 bg-red-500 hover:bg-red-600 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                title="Remove music"
+                                                            >
+                                                                <X className="h-3 w-3" />
+                                                                <span className="sr-only">Remove music</span>
+                                                            </Button>
                                                         </div>
                                                     ) : layer.type === 'music' && !hasContent ? (
                                                         <div className="w-full h-full flex items-center justify-center bg-gray-100 border border-gray-200 rounded p-1">
@@ -920,7 +995,7 @@ export function EditorTab({
                                                                 size="sm"
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    onGenerateMusic();
+                                                                    handleOpenMusicDialog();
                                                                 }}
                                                                 disabled={isGeneratingMusic}
                                                                 className="bg-black/50 hover:bg-green-500 hover:text-white flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -969,7 +1044,7 @@ export function EditorTab({
                                                         size="sm"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            onGenerateVoiceover();
+                                                            handleOpenVoiceDialog();
                                                         }}
                                                         disabled={isGeneratingVoiceover}
                                                         className="bg-black/50 hover:bg-green-500 hover:text-white flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -994,7 +1069,7 @@ export function EditorTab({
                                                         size="sm"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            onGenerateMusic();
+                                                            handleOpenMusicDialog();
                                                         }}
                                                         disabled={isGeneratingMusic}
                                                         className="bg-black/50 hover:bg-green-500 hover:text-white flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1023,6 +1098,25 @@ export function EditorTab({
                     </div>
                 </div>
             </div>
+            
+            {/* Voice Selection Dialog */}
+            <VoiceSelectionDialog
+                isOpen={isVoiceDialogOpen}
+                onClose={handleCloseVoiceDialog}
+                onVoiceSelect={handleVoiceSelect}
+                isGenerating={isGeneratingVoiceover}
+            />
+
+            {/* Music Selection Dialog */}
+            <MusicSelectionDialog
+                isOpen={isMusicDialogOpen}
+                onClose={handleCloseMusicDialog}
+                onMusicGenerate={handleMusicGenerate}
+                isGenerating={isGeneratingMusic}
+                currentParams={{
+                    description: scenario.music
+                }}
+            />
         </div>
     )
 } 

@@ -111,7 +111,7 @@ Remember, your goal is to create a compelling and visually interesting story tha
 
     console.log('Create a storyboard')
     const { text } = await generateText({
-      model: vertex("gemini-2.5-flash-preview-05-20"),
+      model: vertex("gemini-2.5-flash"),
       providerOptions: {
         google: {
           // Options are nested under 'google' for Vertex provider
@@ -271,7 +271,7 @@ Here's an example of how your output should be structured:
 Remember, your goal is to create a compelling and visually interesting story that can be effectively illustrated through a storyboard. Be creative, consistent, and detailed in your prompts.`
 
     const { text } = await generateText({
-      model: vertex("gemini-2.5-flash-preview-05-20"),
+      model: vertex("gemini-2.5-flash"),
       providerOptions: {
         google: {
           // Options are nested under 'google' for Vertex provider

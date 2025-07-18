@@ -1,9 +1,14 @@
 import { GoogleAuth } from 'google-auth-library';
+import { GoogleGenAI, Part } from '@google/genai';
 
 const LOCATION = process.env.LOCATION
 const PROJECT_ID = process.env.PROJECT_ID
 const MODEL = process.env.MODEL
 const GCS_VIDEOS_STORAGE_URI = process.env.GCS_VIDEOS_STORAGE_URI
+
+
+const ai = new GoogleGenAI({ vertexai: true, project: PROJECT_ID, location: LOCATION });
+
 
 interface GenerateVideoResponse {
   name: string;
@@ -89,6 +94,141 @@ export async function generateSceneVideo(prompt: string, imageGcsUri: string): P
   const maxRetries = 5; // Maximum number of retries
   const initialDelay = 1000; // Initial delay in milliseconds (1 second)
 
+  const jsonPrompt = true
+  let modifiedPrompt: string;
+  if (jsonPrompt) {
+
+    const tools = [
+      {
+        googleSearch: {
+        }
+      },
+    ];
+    const config = {
+      thinkingConfig: {
+        thinkingBudget: -1,
+      },
+      tools,
+      responseMimeType: 'application/json',
+    };
+    const model = 'gemini-2.5-flash';
+    const contents = [
+      {
+        role: 'user',
+        parts: [
+          {
+            fileData: {
+              uri: imageGcsUri,
+              mimeType: `image/jpeg`,
+            },
+          },
+          {
+            text: `You are a specialist video director.
+
+Your goal is to generate a structured json prompt for a video.
+First analyse this image that will be the first frame of the video.
+
+
+From this image and this pitch :
+A photographic shot of a poised woman in her late 30s, with warm brown eyes, a confident smile, and shoulder-length, dark, glossy hair styled in soft waves, wearing elegant, modern business attire, gesturing confidently as she leads a presentation. Her gaze sweeps across the room, engaging her audience. She is in a contemporary and sophisticated office space in a high-rise London building, featuring large windows with city views, sleek conference tables, and professional, minimalist décor. Photographic.
+
+Generate a video prompt in this json format :
+{
+  "character_name": [character's name],
+  "character_profile": {
+    "age": [character's age],
+    "height": [character's height],
+    "build": [character's physical build],
+    "skin_tone": [character's skin tone],
+    "hair": [character's hair description],
+    "eyes": [character's eye description],
+    "distinguishing_marks": [character's distinguishing marks],
+    "demeanour": [character's general demeanour]
+  },
+
+  "global_style": {
+    "camera": [overall camera style and motion],
+    "color_grade": [overall color grading style],
+    "lighting": [overall lighting style],
+    "outfit": [overall character outfit description],
+    "max_clip_duration_sec": [maximum duration of any clip in seconds],
+    "aspect_ratio": [overall video aspect ratio],
+    "mouth_shape_intensity": [overall intensity of mouth shape/expression],
+    "eye_contact_ratio": [overall ratio of eye contact],
+    "audio_defaults": {
+      "format": [audio file format],
+      "sample_rate_hz": [audio sample rate in Hz],
+      "channels": [number of audio channels],
+      "style": [overall audio style/genre]
+    }
+  },
+
+  "clips": [
+    {
+      "id": [unique clip identifier],
+      "shot": {
+        "composition": [shot composition details],
+        "camera_motion": [shot camera motion],
+        "frame_rate": [shot frame rate],
+        "film_grain": [shot film grain intensity]
+      },
+      "subject": {
+        "description": [detailed subject description for the clip],
+        "wardrobe": [subject's wardrobe for the clip]
+      },
+      "scene": {
+        "location": [scene location],
+        "time_of_day": [scene time of day],
+        "environment": [scene environment details]
+      },
+      "visual_details": {
+        "action": [character's action in the clip],
+        "props": [props visible in the clip]
+      },
+      "cinematography": {
+        "lighting": [clip-specific lighting details],
+        "tone": [clip's emotional tone]
+      },
+      "audio_track": {
+        "lyrics": [lyrics for the audio track],
+        "emotion": [emotion conveyed by the audio vocal performance],
+        "flow": [rap flow/rhythm description],
+        "wave_download_url": [URL for audio wave download],
+        "youtube_reference": [YouTube reference for audio],
+        "audio_base64": [base64 encoded audio data]
+      },
+      "color_palette": [clip-specific color palette],
+      "dialogue": {
+        "character": [character speaking the dialogue],
+        "line": [dialogue line spoken by the character],
+        "subtitles": [boolean for subtitles presence]
+      },
+      "performance": {
+        "mouth_shape_intensity": [clip-specific intensity of mouth shape/expression],
+        "eye_contact_ratio": [clip-specific ratio of eye contact]
+      },
+      "duration_sec": [clip duration in seconds],
+      "aspect_ratio": [clip aspect ratio]
+    }
+  ]
+}`,
+          },
+        ],
+      },
+    ];
+
+    const response = await ai.models.generateContent({
+      model,
+      config,
+      contents,
+    });
+
+    console.log('text', response.text)
+    modifiedPrompt = response.text || (prompt + '\nDialog: none\nSubtitles: off')
+  } else {
+    modifiedPrompt = prompt + '\nDialog: none\nSubtitles: off'
+  }
+
   const makeRequest = async (attempt: number) => {
     try {
       const response = await fetch(
@@ -102,7 +242,7 @@ export async function generateSceneVideo(prompt: string, imageGcsUri: string): P
           body: JSON.stringify({
             instances: [
               {
-                prompt: prompt + '\nDialog: none\nSubtitles: off',
+                prompt: modifiedPrompt,
                 image: {
                   gcsUri: imageGcsUri,
                   mimeType: "png",
@@ -132,8 +272,8 @@ export async function generateSceneVideo(prompt: string, imageGcsUri: string): P
         const jitter = Math.random() * 2000; // Random value between 0 and baseDelay
         const delay = baseDelay + jitter;
         console.warn(
-            `Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`, 
-            error instanceof Error ? error.message : error
+          `Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`,
+          error instanceof Error ? error.message : error
         );
         await new Promise(resolve => setTimeout(resolve, delay));
         return makeRequest(attempt + 1); // Recursive call for retry

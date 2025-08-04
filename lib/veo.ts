@@ -19,6 +19,7 @@ interface GenerateVideoResponse {
       gcsUri: string;
       mimeType: string;
     }>;
+    raiMediaFilteredReasons?: string;
   };
   error?: { // Add an optional error field to handle operation errors
     code: number;
@@ -94,7 +95,7 @@ export async function generateSceneVideo(prompt: string, imageGcsUri: string): P
   const maxRetries = 5; // Maximum number of retries
   const initialDelay = 1000; // Initial delay in milliseconds (1 second)
 
-  const jsonPrompt = true
+  const jsonPrompt = false
   let modifiedPrompt: string;
   if (jsonPrompt) {
 
@@ -118,7 +119,7 @@ export async function generateSceneVideo(prompt: string, imageGcsUri: string): P
         parts: [
           {
             fileData: {
-              uri: imageGcsUri,
+              fileUri: imageGcsUri,
               mimeType: `image/jpeg`,
             },
           },
@@ -130,9 +131,13 @@ First analyse this image that will be the first frame of the video.
 
 
 From this image and this pitch :
-A photographic shot of a poised woman in her late 30s, with warm brown eyes, a confident smile, and shoulder-length, dark, glossy hair styled in soft waves, wearing elegant, modern business attire, gesturing confidently as she leads a presentation. Her gaze sweeps across the room, engaging her audience. She is in a contemporary and sophisticated office space in a high-rise London building, featuring large windows with city views, sleek conference tables, and professional, minimalist décor. Photographic.
+${prompt}
 
-Generate a video prompt in this json format :
+
+Add some dialogs.
+Should never have music or songs.
+Total duration should be 8s.
+Generate a video prompt in YAML using this format :
 {
   "character_name": [character's name],
   "character_profile": {
@@ -152,15 +157,7 @@ Generate a video prompt in this json format :
     "lighting": [overall lighting style],
     "outfit": [overall character outfit description],
     "max_clip_duration_sec": [maximum duration of any clip in seconds],
-    "aspect_ratio": [overall video aspect ratio],
-    "mouth_shape_intensity": [overall intensity of mouth shape/expression],
-    "eye_contact_ratio": [overall ratio of eye contact],
-    "audio_defaults": {
-      "format": [audio file format],
-      "sample_rate_hz": [audio sample rate in Hz],
-      "channels": [number of audio channels],
-      "style": [overall audio style/genre]
-    }
+    "aspect_ratio": [overall video aspect ratio]
   },
 
   "clips": [
@@ -189,23 +186,11 @@ Generate a video prompt in this json format :
         "lighting": [clip-specific lighting details],
         "tone": [clip's emotional tone]
       },
-      "audio_track": {
-        "lyrics": [lyrics for the audio track],
-        "emotion": [emotion conveyed by the audio vocal performance],
-        "flow": [rap flow/rhythm description],
-        "wave_download_url": [URL for audio wave download],
-        "youtube_reference": [YouTube reference for audio],
-        "audio_base64": [base64 encoded audio data]
-      },
       "color_palette": [clip-specific color palette],
       "dialogue": {
         "character": [character speaking the dialogue],
         "line": [dialogue line spoken by the character],
-        "subtitles": [boolean for subtitles presence]
-      },
-      "performance": {
-        "mouth_shape_intensity": [clip-specific intensity of mouth shape/expression],
-        "eye_contact_ratio": [clip-specific ratio of eye contact]
+        "subtitles": false
       },
       "duration_sec": [clip duration in seconds],
       "aspect_ratio": [clip aspect ratio]
@@ -229,6 +214,8 @@ Generate a video prompt in this json format :
     modifiedPrompt = prompt + '\nDialog: none\nSubtitles: off'
   }
 
+
+  console.log(MODEL)
   const makeRequest = async (attempt: number) => {
     try {
       const response = await fetch(

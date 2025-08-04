@@ -7,6 +7,7 @@ export interface Scene {
   imageGcsUri?: string;
   videoUri?: string | Promise<string>;
   voiceoverAudioUri?: string | Promise<string>;
+  errorMessage?: string;
 }
 
 export interface Scenario {

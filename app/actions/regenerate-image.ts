@@ -14,7 +14,11 @@ export async function regenerateImage(prompt: string) {
     }
   } catch (error) {
     console.error('Error generating image:', error);
-    return { imageGcsUri: undefined };
+    if (error instanceof Error) {
+      return { imageGcsUri: undefined, errorMessage: error.message };
+    } else {
+      return { imageGcsUri: undefined };
+    }
   }
 }
 
@@ -29,8 +33,12 @@ export async function regenerateCharacterImage(prompt: string) {
       return { imageGcsUri: resultJson.predictions[0].gcsUri };
     }
   } catch (error) {
-    console.error('Error generating character image:', error);
-    return { imageGcsUri: undefined };
+    console.error('Error generating image:', error);
+    if (error instanceof Error) {
+      return { imageGcsUri: undefined, errorMessage: error.message };
+    } else {
+      return { imageGcsUri: undefined };
+    }
   }
 }
 

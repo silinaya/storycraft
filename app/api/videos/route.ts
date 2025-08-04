@@ -1,5 +1,6 @@
 import { Scene } from '@/app/types';
 import { generateSceneVideo, waitForOperation } from '@/lib/veo';
+import { getRAIUserMessage } from '@/lib/rai';
 import { GetSignedUrlConfig, Storage } from '@google-cloud/storage';
 import * as fs from 'fs/promises';
 import * as path from 'path';
@@ -50,11 +51,16 @@ export async function POST(req: Request): Promise<Response> {
 
           const generateVideoResponse = await waitForOperation(operationName);
           console.log(`Video generation completed for scene ${index + 1}`);
+          console.log(generateVideoResponse)
+
+          if (generateVideoResponse.response.raiMediaFilteredReasons) {
+            // Throw an error with the determined user-friendly message
+            throw new Error(generateVideoResponse.response.raiMediaFilteredReasons);
+          }
 
           const gcsUri = generateVideoResponse.response.videos[0].gcsUri;
           const [bucketName, ...pathSegments] = gcsUri.replace("gs://", "").split("/");
           const fileName = pathSegments.join("/");
-
 
           if (USE_SIGNED_URL) {
             const options: GetSignedUrlConfig = {

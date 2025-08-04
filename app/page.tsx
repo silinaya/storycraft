@@ -88,9 +88,9 @@ export default function Home() {
     try {
       // Regenerate a single image
       const scene = scenes[index]
-      const { imageGcsUri } = await regenerateImage(scene.imagePrompt)
+      const { imageGcsUri, errorMessage } = await regenerateImage(scene.imagePrompt)
       const updatedScenes = [...scenes]
-      updatedScenes[index] = { ...scene, imageGcsUri, videoUri: undefined }
+      updatedScenes[index] = { ...scene, imageGcsUri, videoUri: undefined, errorMessage: errorMessage }
       console.log(updatedScenes)
       setScenes(updatedScenes)
     } catch (error) {
@@ -146,7 +146,7 @@ export default function Home() {
     try {
       console.log('Edit Video');
       console.log(withVoiceOver);
-      if (scenario && scenes.every((scene) => typeof scene.videoUri === 'string')) {
+      if (scenario && scenes && scenes.every((scene) => typeof scene.videoUri === 'string')) {
         const result = await editVideo(
           await Promise.all(
             scenes.map(async (scene) => {
@@ -232,7 +232,11 @@ export default function Home() {
           }
         } catch (error) {
           console.error("Error regenerating video:", error);
-          return { ...scene, videoUri: FALLBACK_URL }; // Use fallback on error
+          if (error instanceof Error) {
+            return { ...scene, videoUri: FALLBACK_URL, errorMessage: error.message };
+          } else {
+            return { ...scene, videoUri: FALLBACK_URL };
+          }
         }
       })
     );
@@ -482,13 +486,13 @@ export default function Home() {
       id: "editor",
       label: "Editor",
       icon: Scissors,
-      disabled: !scenario || !scenes.every(scene => typeof scene.videoUri === 'string')
+      disabled: !scenario || !scenes || !scenes.every(scene => typeof scene.videoUri === 'string')
     },
     {
       id: "video",
       label: "Video",
       icon: Film,
-      disabled: !scenario || !scenes.every(scene => typeof scene.videoUri === 'string')
+      disabled: !scenario || !scenes || !scenes.every(scene => typeof scene.videoUri === 'string')
     }
   ]
 

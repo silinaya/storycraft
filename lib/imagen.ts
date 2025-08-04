@@ -57,6 +57,7 @@ export async function generateImageRest(prompt: string, aspectRatio?: string, en
             parameters: {
               // storageUri: "gs://svc-demo-vertex-us/",
               safetySetting: 'block_only_high',
+              personGeneration: 'allow_adult',
               sampleCount: 1,
               aspectRatio: aspectRatio ? aspectRatio : "16:9",
               includeRaiReason: true,

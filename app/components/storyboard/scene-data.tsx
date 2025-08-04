@@ -8,6 +8,7 @@ import { Scene } from '../../types'
 import { EditSceneModal } from './edit-scene-modal'
 import { VideoPlayer } from "../video/video-player"
 import { GcsImage } from "../ui/gcs-image"
+import { cn } from "@/lib/utils"
 
 interface SceneDataProps {
   scene: Scene;
@@ -140,6 +141,9 @@ export function SceneData({
               Edit
             </Button>
           </div>
+          {scene.errorMessage && (
+              <p className="text-sm text-red-600">{scene.errorMessage}</p>
+          )}
           <p className="text-sm text-muted-foreground">{scene.description}</p>
         </CardContent>
       </div>

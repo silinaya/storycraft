@@ -6,6 +6,7 @@ import { generateText } from '@/lib/gemini'
 import { Type } from '@google/genai';
 
 import { Scenario, Language } from "../types"
+import { uploadImage } from '@/lib/storage';
 
 export async function generateScenes(pitch: string, numScenes: number, style: string, language: Language) {
   try {
@@ -49,16 +50,25 @@ export async function generateScenes(pitch: string, numScenes: number, style: st
       throw new Error(`Failed to parse AI response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`)
     }
 
+    // Generate character images (1:1) with base64→GCS fallback
     const charactersWithImages = await Promise.all(scenario.characters.map(async (character, index) => {
       try {
         console.log(`Generating image for scene ${index + 1}`);
         const resultJson = await generateImageRest(`${style}: ${character.description}`, "1:1");
-        if (resultJson.predictions[0].raiFilteredReason) {
-          throw new Error(resultJson.predictions[0].raiFilteredReason)
-        } else {
-          console.log('Generated image:', resultJson.predictions[0].gcsUri);
-          return { ...character, imageGcsUri: resultJson.predictions[0].gcsUri };
+        const pred = resultJson?.predictions?.[0];
+        if (!pred) throw new Error('No predictions returned from Vertex Imagen.');
+        if (pred.raiFilteredReason) throw new Error(pred.raiFilteredReason);
+
+        let gcsUri = pred.gcsUri;
+        if (!gcsUri && pred.bytesBase64Encoded) {
+          const filename = `character_${index + 1}_${Date.now()}.png`;
+          const uploaded = await uploadImage(pred.bytesBase64Encoded, filename);
+          if (!uploaded) throw new Error('Failed to upload generated character image to GCS');
+          gcsUri = uploaded;
         }
+
+        console.log('Generated image gcsUri:', gcsUri);
+        return { ...character, imageGcsUri: gcsUri };
       } catch (error) {
         console.error('Error generating image:', error);
         return { ...character, imageGcsUri: undefined };
@@ -147,7 +157,7 @@ export async function generateStoryboard(scenario: Scenario, numScenes: number, 
       throw new Error(`Failed to parse AI response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`)
     }
 
-    // Generate images for each scene
+    // Generate images for each scene with base64→GCS fallback
     const scenesWithImages = await Promise.all(newScenario.scenes.map(async (scene, index) => {
       try {
         console.log(`Generating image for scene ${index + 1}`);
@@ -167,12 +177,21 @@ export async function generateStoryboard(scenario: Scenario, numScenes: number, 
         } else {
           resultJson = await generateImageRest(scene.imagePrompt);
         }
-        if (resultJson.predictions[0].raiFilteredReason) {
-          throw new Error(resultJson.predictions[0].raiFilteredReason)
-        } else {
-          console.log('Generated image:', resultJson.predictions[0].gcsUri);
-          return { ...scene, imageGcsUri: resultJson.predictions[0].gcsUri };
+
+        const pred = resultJson?.predictions?.[0];
+        if (!pred) throw new Error('No predictions returned from Vertex Imagen.');
+        if (pred.raiFilteredReason) throw new Error(pred.raiFilteredReason);
+
+        let gcsUri = pred.gcsUri;
+        if (!gcsUri && pred.bytesBase64Encoded) {
+          const filename = `scene_${index + 1}_${Date.now()}.png`;
+          const uploaded = await uploadImage(pred.bytesBase64Encoded, filename);
+          if (!uploaded) throw new Error('Failed to upload generated image to GCS');
+          gcsUri = uploaded;
         }
+
+        console.log('Generated image gcsUri:', gcsUri);
+        return { ...scene, imageGcsUri: gcsUri };
       } catch (error) {
         console.error('Error generating image:', error);
         if (error instanceof Error) {
@@ -191,4 +210,3 @@ export async function generateStoryboard(scenario: Scenario, numScenes: number, 
     throw new Error(`Failed to generate scenes: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
-

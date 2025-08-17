@@ -3,6 +3,12 @@
 import { generateImageRest } from '@/lib/imagen';
 import { uploadImage } from '@/lib/storage';
 
+/**
+ * 生成场景图片
+ * - 优先使用 Vertex 返回的 gcsUri
+ * - 当 gcsUri 缺失但存在 bytesBase64Encoded 时，回退：将 base64 上传到 GCS 并返回 gs://... URI
+ * - 保留 RAI 过滤与健壮性判空
+ */
 export async function regenerateImage(prompt: string) {
   try {
     console.log('Regenerating image with prompt:', prompt);
@@ -13,7 +19,7 @@ export async function regenerateImage(prompt: string) {
 
     let gcsUri = pred.gcsUri;
 
-    // Fallback: preview model may return only base64
+    // Fallback: preview model may only return base64
     if (!gcsUri && pred.bytesBase64Encoded) {
       const filename = `scene_${Date.now()}.png`;
       const uploaded = await uploadImage(pred.bytesBase64Encoded, filename);
@@ -25,11 +31,17 @@ export async function regenerateImage(prompt: string) {
     return { imageGcsUri: gcsUri };
   } catch (error) {
     console.error('Error generating image:', error);
-    if (error instanceof Error) return { imageGcsUri: undefined, errorMessage: error.message };
+    if (error instanceof Error) {
+      return { imageGcsUri: undefined, errorMessage: error.message };
+    }
     return { imageGcsUri: undefined };
   }
 }
 
+/**
+ * 生成角色头像（1:1）
+ * - 同样采用 gcsUri 优先 + base64 回退上传
+ */
 export async function regenerateCharacterImage(prompt: string) {
   try {
     console.log('Regenerating character image with prompt:', prompt);
@@ -51,7 +63,9 @@ export async function regenerateCharacterImage(prompt: string) {
     return { imageGcsUri: gcsUri };
   } catch (error) {
     console.error('Error generating image:', error);
-    if (error instanceof Error) return { imageGcsUri: undefined, errorMessage: error.message };
+    if (error instanceof Error) {
+      return { imageGcsUri: undefined, errorMessage: error.message };
+    }
     return { imageGcsUri: undefined };
   }
 }
